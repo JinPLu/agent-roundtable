@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "roundtable-reviewer-verdict",
+  "title": "Reviewer Verdict",
+  "description": "Machine-readable verdict block produced by a reviewer turn. Must be embedded as a fenced ```json block in the Verification section of the five-part turn body. The three convergence_* fields are OPTIONAL (convergence-loop mode only). The dissenting_concerns array is OPTIONAL (reviewer-aggregator mode only).",
+  "type": "object",
+  "required": ["acceptance", "scope", "blocking_issues"],
+  "additionalProperties": false,
+  "properties": {
+    "acceptance": {
+      "type": "array",
+      "description": "One entry per acceptance criterion from GOAL.md.",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "verdict", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "description": "Verbatim text of the acceptance criterion from GOAL.md."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["COVERED", "PARTIAL", "MISSING", "VERIFICATION-NOT-EVIDENCED"],
+            "description": "COVERED = fully satisfied with evidence; PARTIAL = partly done; MISSING = not done; VERIFICATION-NOT-EVIDENCED = claimed done but output not captured."
+          },
+          "evidence": {
+            "type": "string",
+            "description": "File path + line range, command + output excerpt, or explanation of absence."
+          }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["status", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["OK", "VIOLATION"],
+          "description": "OK = no out-of-scope writes; VIOLATION = something outside in-scope paths was touched."
+        },
+        "details": {
+          "type": "string",
+          "description": "Empty string when OK. Describe what was touched out of scope when VIOLATION."
+        }
+      }
+    },
+    "blocking_issues": {
+      "type": "array",
+      "description": "Bugs, security issues, perf concerns, or scope violations. Empty array if none.",
+      "items": {
+        "type": "object",
+        "required": ["severity", "file", "issue", "suggested_fix"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["BLOCKER", "MAJOR", "MINOR"],
+            "description": "BLOCKER = must fix before accept; MAJOR = should fix; MINOR = nice to fix."
+          },
+          "file": {
+            "type": "string",
+            "description": "Absolute file path + line range, e.g. /repo/src/foo.py:42-55. Use 'n/a' for cross-cutting issues."
+          },
+          "issue": {
+            "type": "string",
+            "description": "One-sentence description of the problem."
+          },
+          "suggested_fix": {
+            "type": "string",
+            "description": "One-sentence proposed resolution; no patch text."
+          }
+        }
+      }
+    },
+    "convergence_status": {
+      "type": "string",
+      "enum": ["converged", "progressing", "stalled", "regressed", "unknown"],
+      "description": "Convergence-loop mode only. Reviewer's verdict on whether this round made measurable progress toward the goal versus the prior round."
+    },
+    "next_action_hint": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Convergence-loop mode only. Short directive to the parent loop controller, e.g. 'executor-rerun', 'planner-revise', 'switch-model', 'branch', 'escalate-to-user', 'accept-and-stop'."
+    },
+    "evidence_delta_vs_prior_round": {
+      "type": "string",
+      "maxLength": 4000,
+      "description": "Convergence-loop mode only. Free-form one-paragraph note on what changed (in the artifact, in the failure shape, in the metric) versus the prior round's reviewer verdict."
+    },
+    "dissenting_concerns": {
+      "type": "array",
+      "description": "Reviewer-aggregator mode only. Minority dissent that the aggregator disagrees with but preserves for the record. Each entry cites which reviewer raised it and why the aggregator did not promote it to blocking_issues.",
+      "items": {
+        "type": "object",
+        "required": ["source_reviewer", "concern", "aggregator_rationale"],
+        "additionalProperties": false,
+        "properties": {
+          "source_reviewer": {
+            "type": "string",
+            "description": "Actor/alias of the reviewer who raised this concern."
+          },
+          "concern": {
+            "type": "string",
+            "description": "The dissenting concern, one sentence."
+          },
+          "aggregator_rationale": {
+            "type": "string",
+            "description": "Why the aggregator did not promote this to a blocking issue."
+          }
+        }
+      }
+    }
+  }
+}

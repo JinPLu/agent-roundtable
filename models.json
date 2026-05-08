@@ -1,0 +1,177 @@
+{
+  "version": 6,
+  "description": "Model registry for agent-roundtable. Per-model capability data enables signal-based routing in route.py.",
+  "last_reviewed": "2026-05-09",
+  "currency": "USD",
+  "pricing_notes": [
+    "All pricing values are USD per 1M tokens.",
+    "codex models route through cialloapi; claude aliases route through DeepSeek via an Anthropic-compatible endpoint.",
+    "cursor-subagent entries use Cursor Task models; their cli_arg is the Cursor model slug."
+  ],
+  "models": {
+    "gpt-5.5": {
+      "actor": "codex",
+      "cli_arg": "gpt-5.5",
+      "provider": "cialloapi",
+      "underlying": "OpenAI GPT-5.5 via cialloapi proxy",
+      "context_window_k": 1050,
+      "max_output_k": 128,
+      "benchmarks": {
+        "swe_bench_verified": 88.7,
+        "swe_bench_pro": 58.6,
+        "terminal_bench_2": 82.7,
+        "gpqa_diamond": 93.6,
+        "humaneval": 94.2
+      },
+      "best_for": ["agentic execution (Terminal-Bench leader)", "rigorous review", "code-shaped planning"],
+      "pricing": { "per_1m_input": 0.0694, "per_1m_cached_input": 0.0139, "per_1m_output": 0.4167, "source": "https://cialloapi.cn/pricing" }
+    },
+    "gpt-5.4": {
+      "actor": "codex",
+      "cli_arg": "gpt-5.4",
+      "provider": "cialloapi",
+      "underlying": "OpenAI GPT-5.4 via cialloapi proxy",
+      "context_window_k": 1050,
+      "max_output_k": 128,
+      "benchmarks": {
+        "terminal_bench_2": 45.0,
+        "math_500": 94.6
+      },
+      "best_for": ["fallback code reasoning", "second-opinion reviewer"],
+      "pricing": { "per_1m_input": 0.0694, "per_1m_cached_input": 0.0139, "per_1m_output": 0.4167, "source": "https://cialloapi.cn/pricing" }
+    },
+    "gpt-5.4-mini": {
+      "actor": "codex",
+      "cli_arg": "gpt-5.4-mini",
+      "provider": "cialloapi",
+      "underlying": "OpenAI GPT-5.4-mini via cialloapi proxy",
+      "context_window_k": 400,
+      "max_output_k": 128,
+      "benchmarks": {},
+      "best_for": ["triage", "cheap formatting checks", "compaction"],
+      "pricing": { "per_1m_input": 0.0208, "per_1m_cached_input": 0.0042, "per_1m_output": 0.125, "source": "https://cialloapi.cn/pricing" }
+    },
+    "gpt-5.3-codex": {
+      "actor": "codex",
+      "cli_arg": "gpt-5.3-codex",
+      "provider": "cialloapi",
+      "underlying": "OpenAI Codex-tuned GPT-5.3 variant via cialloapi proxy",
+      "context_window_k": 256,
+      "max_output_k": 128,
+      "benchmarks": {},
+      "best_for": ["code-only synthesis when latest models are unnecessary"],
+      "pricing": { "per_1m_input": 0.0486, "per_1m_cached_input": 0.0097, "per_1m_output": 0.3889, "source": "https://cialloapi.cn/pricing" }
+    },
+    "claude-opus": {
+      "actor": "claude",
+      "cli_arg": "opus",
+      "provider": "deepseek-v4-pro",
+      "underlying": "DeepSeek-V4-Pro (1.6T MoE, 49B active) via Anthropic-compat endpoint",
+      "context_window_k": 1000,
+      "max_output_k": 384,
+      "benchmarks": {
+        "swe_bench_verified": 80.6,
+        "terminal_bench_2": 67.9,
+        "livecode_bench": 93.5,
+        "codeforces_rating": 3206
+      },
+      "best_for": ["cross-vendor review", "competitive programming", "long-output tasks (384K max)"],
+      "pricing": { "per_1m_input": 0.435, "per_1m_cached_input": 0.003625, "per_1m_output": 0.87, "source": "https://deepseekai.guide/api/deepseek-api-pricing/" }
+    },
+    "claude-sonnet": {
+      "actor": "claude",
+      "cli_arg": "sonnet",
+      "provider": "deepseek-v4-pro",
+      "underlying": "DeepSeek-V4-Pro (same model as claude-opus, different alias)",
+      "context_window_k": 1000,
+      "max_output_k": 384,
+      "benchmarks": {
+        "swe_bench_verified": 80.6,
+        "terminal_bench_2": 67.9
+      },
+      "best_for": ["second DeepSeek slot for parallel cross-vendor dispatch"],
+      "pricing": { "per_1m_input": 0.435, "per_1m_cached_input": 0.003625, "per_1m_output": 0.87, "source": "https://deepseekai.guide/api/deepseek-api-pricing/" }
+    },
+    "claude-haiku": {
+      "actor": "claude",
+      "cli_arg": "haiku",
+      "provider": "deepseek-v4-flash",
+      "underlying": "DeepSeek-V4-Flash (284B MoE, 13B active) via Anthropic-compat endpoint",
+      "context_window_k": 1000,
+      "max_output_k": 384,
+      "benchmarks": {},
+      "best_for": ["cheap triage", "format-only checks", "compaction"],
+      "pricing": { "per_1m_input": 0.14, "per_1m_cached_input": 0.0028, "per_1m_output": 0.28, "source": "https://deepseekai.guide/api/deepseek-api-pricing/" }
+    },
+    "cursor-composer-2": {
+      "actor": "cursor-subagent",
+      "cli_arg": "composer-2-fast",
+      "provider": "cursor-auto-composer-pool",
+      "underlying": "Cursor Composer 2 via Cursor Task subagent",
+      "context_window_k": null,
+      "max_output_k": null,
+      "benchmarks": {},
+      "latency_warning": "Pool-dependent, unbounded queue stalls observed (16 min). No --timeout-s.",
+      "best_for": ["cheap parallel executor", "doc/code fan-out"],
+      "pricing": { "per_1m_input": 0.5, "per_1m_cached_input": 0.2, "per_1m_output": 2.5, "source": "https://cursor.com/cn/docs/models-and-pricing" }
+    },
+    "cursor-claude-4.7-opus": {
+      "actor": "cursor-subagent",
+      "cli_arg": "claude-opus-4-7-thinking-xhigh",
+      "provider": "anthropic-via-cursor",
+      "underlying": "Anthropic Claude 4.7 Opus via Cursor Task subagent",
+      "context_window_k": 1000,
+      "max_output_k": 128,
+      "benchmarks": {
+        "swe_bench_verified": 87.6,
+        "swe_bench_pro": 64.3,
+        "terminal_bench_2": 69.4,
+        "cursor_bench": 70.0
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
+      "best_for": ["highest-rigor reviewer (SWE-Pro leader)", "self-verifying execution", "web research"],
+      "pricing": { "per_1m_input": 5.0, "per_1m_cached_input": 0.5, "per_1m_output": 25.0, "source": "https://cursor.com/cn/docs/models-and-pricing" }
+    },
+    "cursor-claude-4.6-sonnet": {
+      "actor": "cursor-subagent",
+      "cli_arg": "claude-4.6-sonnet-medium-thinking",
+      "provider": "anthropic-via-cursor",
+      "underlying": "Anthropic Claude 4.6 Sonnet via Cursor Task subagent",
+      "context_window_k": 1000,
+      "max_output_k": 128,
+      "benchmarks": {
+        "swe_bench_verified": 79.6
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
+      "best_for": ["balanced Cursor executor/reviewer", "math-heavy tasks"],
+      "pricing": { "per_1m_input": 3.0, "per_1m_cached_input": 0.3, "per_1m_output": 15.0, "source": "https://cursor.com/cn/docs/models-and-pricing" }
+    },
+    "cursor-gemini-3.1-pro": {
+      "actor": "cursor-subagent",
+      "cli_arg": "gemini-3.1-pro",
+      "provider": "google-via-cursor",
+      "underlying": "Google Gemini 3.1 Pro via Cursor Task subagent",
+      "context_window_k": 1000,
+      "max_output_k": 64,
+      "benchmarks": {
+        "terminal_bench_2": 68.5,
+        "gpqa_diamond": 94.3,
+        "arc_agi_2": 77.1
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
+      "best_for": ["abstract reasoning (ARC-AGI-2 leader)", "third-vendor opinion", "scientific QA"],
+      "limitations": ["max output 64K (half of others)", "weak on SWE-bench agentic coding"],
+      "pricing": { "per_1m_input": 2.0, "per_1m_cached_input": 0.2, "per_1m_output": 12.0, "source": "https://cursor.com/cn/docs/models-and-pricing" }
+    }
+  },
+  "role_defaults": {
+    "triage": ["gpt-5.4-mini", "claude-haiku", "cursor-composer-2"],
+    "discussant": ["gpt-5.5", "claude-opus", "cursor-composer-2"],
+    "planner": ["gpt-5.5", "claude-opus", "cursor-claude-4.7-opus", "cursor-gemini-3.1-pro"],
+    "executor": ["gpt-5.5", "claude-opus", "cursor-composer-2"],
+    "executor-heavy": ["gpt-5.5", "cursor-claude-4.7-opus", "claude-opus"],
+    "reviewer": ["cursor-claude-4.7-opus", "gpt-5.5", "claude-opus", "cursor-gemini-3.1-pro"],
+    "reviewer-aggregator": ["gpt-5.5", "claude-opus", "cursor-gemini-3.1-pro"],
+    "compactor": ["gpt-5.4-mini", "claude-haiku", "cursor-composer-2"]
+  }
+}
