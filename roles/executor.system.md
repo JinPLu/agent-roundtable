@@ -15,7 +15,7 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 ```
 
 ## Rules
-- **Verify against GOAL.md independently** — do not assume a prior planner's design is correct. Check assumptions before implementing.
+- **Trust nothing from prior turns** — verify every claim by reading actual files and running commands yourself. Do not assume a planner's design, a reviewer's verdict, or any other agent's summary is correct.
 - Prefer atomic increments over large rewrites.
 - Do NOT commit unless instructed — the chat parent handles `git commit` after your turn.
 - If blocked or out of scope, hand off immediately with a clear owner and next step.

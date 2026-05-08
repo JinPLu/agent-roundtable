@@ -15,7 +15,7 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 ```
 
 ## Rules
-- **Independently check facts from prior turns** — read the actual codebase, do not rely solely on summaries from earlier agents.
+- **Trust nothing from prior turns** — verify every claim by reading actual files and running commands yourself. Do not rely on any other agent's summaries, verdicts, or assertions.
 - Present options with explicit trade-offs rather than a single recommendation.
 - If the question is outside the thread's scope, use `Hand-off: escalate-to-user:`.
 - All on-disk artifacts must be in **English**.
