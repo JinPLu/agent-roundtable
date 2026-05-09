@@ -102,12 +102,57 @@ Every turn appended to `THREAD.md` MUST be exactly:
 
 Dispatchers capture this final assistant message verbatim (`codex -o last.md`, `claude .result`) and append it as the next numbered turn.
 
+## Model tiers and dispatch confirmation
+
+### Cost tiers (as configured in `models.json`)
+
+| Tier | Models | Approx cost (out/1M) | Suitable for |
+|---|---|---|---|
+| **Cheap** | `codex-gpt-5` (gpt-5.5 via proxy), `claude-opus` (DeepSeek-V4-Pro), `cursor-composer-2` | $0.4–2.5 | bulk executor/reviewer fan-out, triage, compaction |
+| **Mid** | `cursor-claude-4.6-sonnet`, `cursor-gemini-3.1-pro` | $12–15 | cross-vendor review, scientific QA, diverse opinion |
+| **Expensive** | `cursor-claude-4.7-opus` | $25 | final reviewer-aggregation, highest-stakes SWE-Pro tasks only |
+
+Key fact: `claude-opus` (DeepSeek-V4-Pro, SWE-bench 80.6) and `codex-gpt-5` (GPT-5.5, Terminal-Bench 82.7) are quality-competitive with Sonnet-tier models at ~10–70× lower cost. Default to cheap-tier for all fan-out; reserve expensive-tier for aggregation.
+
+### Dispatch confirmation protocol (mandatory before every turn)
+
+Before dispatching **any** turn the chat parent MUST show the user this block and wait for approval or correction:
+
+```
+Proposed dispatch
+  Thread : <slug>
+  Role   : <role>
+  Actor  : <actor>  →  model: <model-id>  (cli_arg: <cli_arg>)
+  Effort : <effort>
+  Multi? : <single turn | N parallel turns: actor1 + actor2 + …>
+  Est. $ : ~$<low>–<high> (input ~<Xk> tok × $<rate>/M + output est.)
+
+Alternatives (from role_defaults):
+  1. <actor1> / <model1> — <one-line capability note> — $<out>/M
+  2. <actor2> / <model2> — …
+
+Proceed with proposed? Or pick alternative / adjust effort / go multi?
+```
+
+Skip confirmation only in a pre-agreed convergence loop (user said "keep going until reviewer accepts") or when the user explicitly says "dispatch now". Log every skipped confirmation as a note in the turn addendum.
+
+### Multi-agent quality mode
+
+When the user requests high quality or the goal is complex:
+
+1. **Plan phase** — dispatch `codex-gpt-5` + `claude-opus` in parallel as co-planners (disjoint artifacts). Chat parent merges and asks user to pick or synthesize.
+2. **Execute phase** — single executor (cheapest capable; `codex-gpt-5` default).
+3. **Review phase** — 2–3 parallel reviewers from **different** actors/vendors (e.g. `codex-gpt-5` + `claude-opus` + `cursor-gemini-3.1-pro`). Cross-vendor catches different failure modes. Each produces a structured JSON verdict.
+4. **Aggregate phase** — `cursor-claude-4.7-opus` (expensive, highest SWE-Pro) synthesizes the N verdicts into one canonical verdict. Reserve this model for aggregation only.
+
+Parallel review of 3 cheap agents costs roughly the same as a single `cursor-claude-4.7-opus` turn at ~$25/M — but delivers cross-vendor diversity.
+
 ## Hard rules
 
 > **CRITICAL — these rules are non-negotiable. Violating any one is a protocol failure.**
 
 1. **Independent verification**: every agent MUST verify facts by reading actual files and running commands. Do NOT trust any other agent's summaries, self-reported outcomes, or verdicts. Evidence comes from the codebase, not from THREAD.md turn bodies. This is the single most important rule — without it, multi-agent review degenerates into rubber-stamping.
-2. **Confirm dispatch**: default is to ask the user (which agent, model, effort) before each dispatch. Skip the confirmation in convergence-loop mode and other pre-agreed workflows.
+2. **Confirm dispatch**: show the dispatch confirmation block above and wait for user approval before every turn. Skip only in a pre-agreed convergence loop or explicit "dispatch now" instruction — log the skip in the addendum.
 3. **Single writer per path**: no two agents write to the same file concurrently. Parallel turns require disjoint file ownership, separate worktrees, or all-but-one read-only roles.
 4. **No agent recursion**: only the user and chat parent orchestrate. Codex must not invoke claude or cursor-agent; claude must not invoke codex.
 5. **Self-contained prompts**: subagents see no chat history — the dispatch script injects context (THREAD.md tail + GOAL.md + role guidelines + addendum) fresh each turn.

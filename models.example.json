@@ -300,35 +300,15 @@
       }
     }
   },
+  "_role_defaults_note": "Cheap-first: bulk work (executor, reviewer fan-out, triage, compaction) uses cheapest capable model. reviewer-aggregator is the only role that defaults to the expensive cursor-claude-4.7-opus — it synthesizes N parallel reviewer verdicts into one canonical judgment. Cross-vendor fan-out (composer-2 + gemini + sonnet) costs ~same as one cursor-claude-4.7-opus turn but delivers cross-vendor diversity. When you import BYOK models, the chat parent adds them to appropriate tiers.",
   "role_defaults": {
-    "triage": [
-      "cursor-composer-2"
-    ],
-    "discussant": [
-      "cursor-composer-2",
-      "cursor-claude-4.6-sonnet"
-    ],
-    "planner": [
-      "cursor-claude-4.7-opus",
-      "cursor-gemini-3.1-pro"
-    ],
-    "executor": [
-      "cursor-composer-2",
-      "cursor-claude-4.6-sonnet"
-    ],
-    "executor-heavy": [
-      "cursor-claude-4.7-opus"
-    ],
-    "reviewer": [
-      "cursor-claude-4.7-opus",
-      "cursor-gemini-3.1-pro"
-    ],
-    "reviewer-aggregator": [
-      "cursor-gemini-3.1-pro",
-      "cursor-claude-4.7-opus"
-    ],
-    "compactor": [
-      "cursor-composer-2"
-    ]
+    "triage":              ["cursor-composer-2"],
+    "discussant":          ["cursor-composer-2", "cursor-gemini-3.1-pro"],
+    "planner":             ["cursor-gemini-3.1-pro", "cursor-claude-4.6-sonnet"],
+    "executor":            ["cursor-composer-2"],
+    "executor-heavy":      ["cursor-claude-4.6-sonnet"],
+    "reviewer":            ["cursor-composer-2", "cursor-gemini-3.1-pro", "cursor-claude-4.6-sonnet"],
+    "reviewer-aggregator": ["cursor-claude-4.7-opus"],
+    "compactor":           ["cursor-composer-2"]
   }
 }
