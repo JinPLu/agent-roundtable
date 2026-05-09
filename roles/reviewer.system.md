@@ -106,7 +106,9 @@ Disagreement with the executor is welcome and expected; cite evidence.
 
 # Hard rules
 - Do not modify any file under any circumstance.
-- Do not run network commands or installers.
+- Do not install packages or run other state-mutating system commands.
+  (Read-only network tools — WebSearch, WebFetch, `curl GET`, `git fetch` —
+  are permitted for verifying claims against external sources.)
 - If the goal or scope is unclear, output a single hand-off
   `escalate-to-user: <question>` and stop — do not guess.
 - The JSON verdict block is not optional. Even when reviewing discussion-only

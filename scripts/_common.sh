@@ -5,25 +5,37 @@
 set -euo pipefail
 
 # ── Repo-root resolution (priority order) ─────────────────────────────────────
-# 1. Explicit env var ROUNDTABLE_REPO_ROOT.
-# 2. git -C <script-dir> rev-parse --show-toplevel   (auto from script location)
-# 3. git rev-parse --show-toplevel                   (auto from caller's cwd)
-# 4. Hard error with actionable message.
+# Goal: ROUNDTABLE_REPO_ROOT should be the **user's project repo**, not the
+# skill's own install location. Priority:
+#   1. Explicit env var ROUNDTABLE_REPO_ROOT.
+#   2. git rev-parse --show-toplevel from caller's cwd (likely the project).
+#   3. git -C <script-dir> rev-parse --show-toplevel (fallback to skill repo).
+#   4. Hard error.
+# Warn loudly if the resolved root looks like the skill's own dir, since that
+# almost always means the caller forgot to cd into their project first.
 if [[ -z "${ROUNDTABLE_REPO_ROOT:-}" ]]; then
-  _rt_git_script=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || true)
-  if [[ -n "$_rt_git_script" ]]; then
-    ROUNDTABLE_REPO_ROOT="$_rt_git_script"
+  _rt_git_cwd=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$_rt_git_cwd" ]]; then
+    ROUNDTABLE_REPO_ROOT="$_rt_git_cwd"
   else
-    _rt_git_cwd=$(git rev-parse --show-toplevel 2>/dev/null || true)
-    if [[ -n "$_rt_git_cwd" ]]; then
-      ROUNDTABLE_REPO_ROOT="$_rt_git_cwd"
+    _rt_git_script=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_rt_git_script" ]]; then
+      ROUNDTABLE_REPO_ROOT="$_rt_git_script"
     else
-      echo "ERROR: Cannot determine repo root; set ROUNDTABLE_REPO_ROOT=/path/to/repo or run from inside a git repo." >&2
+      echo "ERROR: Cannot determine repo root; set ROUNDTABLE_REPO_ROOT=/path/to/your/project or run from inside a git repo." >&2
       exit 1
     fi
   fi
-  unset _rt_git_script _rt_git_cwd
+  unset _rt_git_cwd _rt_git_script
 fi
+# Warn if repo root accidentally points at the skill itself.
+_rt_skill_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "$ROUNDTABLE_REPO_ROOT" == "$_rt_skill_dir" ]]; then
+  echo "WARN [_common.sh]: ROUNDTABLE_REPO_ROOT=${ROUNDTABLE_REPO_ROOT} is the skill's own directory." >&2
+  echo "                  Agents will explore the skill, not your project. Set" >&2
+  echo "                  ROUNDTABLE_REPO_ROOT=/path/to/your/project to fix this." >&2
+fi
+unset _rt_skill_dir
 export ROUNDTABLE_REPO_ROOT
 
 ROUNDTABLE_ROOT="${ROUNDTABLE_ROOT:-${ROUNDTABLE_REPO_ROOT}/.roundtable}"

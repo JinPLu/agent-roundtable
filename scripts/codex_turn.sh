@@ -111,13 +111,18 @@ mkdir -p "$hist"
 # CWD + add-dir: non-executor roles run from thread_dir (workspace-write grants
 # artifact writes via -C); --add-dir repo_root grants read access to source.
 # Executor runs from repo_root (source writes); --add-dir thread_dir for reading.
+# When ROUNDTABLE_PROJECT_ROOT is set and differs from repo_root, mount it too —
+# otherwise agents see project file paths in the prompt but can't open them.
 _cwd="$repo_root"
-_add_dir="$thread_dir"
+_extra_dirs=( "$thread_dir" )
 if [[ -n "$worktree" ]]; then
   _cwd="$(ensure_worktree "$thread_dir" "$worktree")"
 elif [[ "$role" != "executor" ]]; then
   _cwd="$thread_dir"
-  _add_dir="$repo_root"
+  _extra_dirs=( "$repo_root" )
+fi
+if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$repo_root" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" ]]; then
+  _extra_dirs+=( "$ROUNDTABLE_PROJECT_ROOT" )
 fi
 
 # Compose addendum.
@@ -150,7 +155,6 @@ _prompt="$(ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" build_prompt "$thread_dir" 
 _args=(
   --skip-git-repo-check
   -C "$_cwd"
-  --add-dir "$_add_dir"
   -s "$sandbox"
   -c approval_policy="never"
   --enable goals
@@ -158,6 +162,9 @@ _args=(
   -o "${hist}/last.md"
   --json
 )
+for _d in "${_extra_dirs[@]}"; do
+  _args+=( --add-dir "$_d" )
+done
 [[ -n "$model" ]] && _args+=( -m "$model" )
 
 _start=$(date +%s)

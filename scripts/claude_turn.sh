@@ -142,8 +142,12 @@ mapfile -t _warnings < <(warn_addendum_sanity "$_add" "claude_turn.sh")
 # (85.5% adoption rate when agents see prior verdicts, per arXiv 2605.00914).
 _prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" build_prompt "$thread_dir" "$role" "$_add" "${hist}/prompt.md")"
 
-# Build CLI args.
+# Build CLI args. Mount thread_dir + (when set and distinct) ROUNDTABLE_PROJECT_ROOT
+# so agents can actually open project files (.planning/, source code, etc.).
 _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
+if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" && "$ROUNDTABLE_PROJECT_ROOT" != "$thread_dir" ]]; then
+  _args+=( --add-dir "$ROUNDTABLE_PROJECT_ROOT" )
+fi
 [[ "$bare" -eq 0 ]] && _args+=( --exclude-dynamic-system-prompt-sections )
 [[ -n "$model" ]] && _args+=( --model "$model" )
 [[ -f "$role_sys" ]] && _args+=( --append-system-prompt "$(cat "$role_sys")" )
@@ -163,7 +167,9 @@ else
     reviewer|reviewer-aggregator|devils-advocate)
       : ;;  # plan mode + role prompt enforce read-only intent; no allowlist needed.
     *)
-      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git fetch:*) Bash(git fetch) Bash(git remote:*) Bash(git config:*) Bash(git filter-branch:*) Bash(git update-ref:*) Bash(git checkout origin/*)" );;
+      # Truly destructive ops only — fetch/remote/config/checkout origin/* are
+      # legitimate exploration tools and stay enabled.
+      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
   esac
 fi
 
