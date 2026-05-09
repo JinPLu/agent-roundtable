@@ -79,16 +79,19 @@ Model selection is a judgment call, not a lookup. Apply these principles:
 
 ### Dispatch confirmation (mandatory before every turn)
 
-Before dispatching **any** turn the chat parent MUST show the user this block and wait for approval:
+Before dispatching **any** turn the chat parent MUST show the user this block and wait for approval.
+
+**Specifying your project:** if the thread's work concerns a project outside the roundtable repo, set `ROUNDTABLE_PROJECT_ROOT=/absolute/path/to/project` — the agent's prompt will automatically include the project's `.planning/` key files (`STATE.json`, `DASHBOARD.md`, `NARRATIVE.md`, work orders) so agents read the canonical project state instead of guessing. The `Project` line in the dispatch block shows the current value; tell the parent agent to set it if it shows "none".
 
 ```
 Proposed dispatch
-  Thread : <slug>
-  Role   : <role>
-  Actor  : <actor>  →  model: <model-id>  (cli_arg: <cli_arg>)
-  Effort : <effort>
-  Multi? : <single turn | N parallel turns: actor1 + actor2 + …>
-  Est. $ : ~$<low>–<high> (input ~<Xk> tok × $<rate>/M + output est.)
+  Thread  : <slug>
+  Project : <ROUNDTABLE_PROJECT_ROOT path, or "none — set ROUNDTABLE_PROJECT_ROOT=/path/to/project">
+  Role    : <role>
+  Actor   : <actor>  →  model: <model-id>  (cli_arg: <cli_arg>)
+  Effort  : <effort>
+  Multi?  : <single turn | N parallel turns: actor1 + actor2 + …>
+  Est. $  : ~$<low>–<high> (input ~<Xk> tok × $<rate>/M + output est.)
 
 Alternatives (from role_defaults):
   1. <actor1> / <model1> — <one-line capability note> — $<out>/M
