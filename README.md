@@ -88,6 +88,30 @@ Cursor agent 会执行 `backend.sh apply`：把 endpoint 写进本地 `.codex_en
 
 > **API key 永远不会进聊天记录、不会上 GitHub**。skill 通过文件传 key，agent 只读 endpoint URL 和模型名做调度，从不读 key 本身。
 
+### 第 6 步：为项目造 agent 上下文（每个项目做一次）
+
+Claude CLI 和 Codex CLI 启动时会自动加载项目根的两个上下文文件：
+
+- `CLAUDE.md` —— Claude Code 自动读取
+- `AGENTS.md` —— Codex CLI 自动读取
+
+没有这两个文件，agent 就得每轮重新探索"这个项目是什么、源码在哪、规范是什么"——浪费 token、效率低、容易瞎猜。**有这两个文件，agent 一上来就是满血状态。**
+
+**怎么生成**：在 Cursor 里告诉 agent：
+
+> **「用 agent-roundtable，dispatch 一个 cursor-claude-4.7-opus subagent 给我项目造 CLAUDE.md，描述项目结构、关键文件、规范、常见陷阱」**
+
+Cursor agent 会派一个高能力 subagent（推荐 Opus 4.7 thinking-high）扫项目目录、读 `.planning/` / `README` / 关键源码后写出一份 ~120-200 行的 `CLAUDE.md` 落到项目根。
+
+**两份内容相同 → symlink 即可**（避免漂移）：
+
+```bash
+cd /your/project
+ln -s CLAUDE.md AGENTS.md
+```
+
+> 项目变化大（重构、加了新模块）时，重新 dispatch 一次刷新 CLAUDE.md。
+
 ---
 
 ## 怎么用
