@@ -54,34 +54,65 @@ _show_local() {
 _show_models_summary() {
   local mf
   mf="$(_models_file)"
-  printf '── models.json (%s) ──\n' "$mf"
   python3 - "$mf" <<'PY'
 import json, sys, pathlib
 p = pathlib.Path(sys.argv[1])
 data = json.loads(p.read_text())
-active = data.get("active") or {}
-models = data.get("models") or {}
+active = (data.get("active") or {})
+models = (data.get("models") or {})
+
+# ── Header ────────────────────────────────────────────────────────────────
+suffix = "" if p.name == "models.json" else f"  (fallback: {p.name})"
+print(f"=== Actor import status{suffix} ===")
 for actor in ("codex", "claude"):
     mid = active.get(actor)
     if not mid:
-        print(f"  active.{actor}: <not set>")
+        print(f"  {actor:<7}  ❌ NOT IMPORTED   active.{actor} is null — CLI will use its own login")
         continue
     m = models.get(mid)
     if not m:
-        print(f"  active.{actor}: {mid!r} -> ERROR: no such model in `models` block")
+        print(f"  {actor:<7}  ⚠  BROKEN         active.{actor}={mid!r} but no such entry in `models`")
         continue
     ep = m.get("endpoint") or {}
-    has_base = bool(ep.get("base_url"))
-    has_key = bool(ep.get("api_key"))
+    has_base, has_key = bool(ep.get("base_url")), bool(ep.get("api_key"))
     cli = m.get("cli_arg", mid)
-    status = (
-        "ready" if (has_base and has_key) else
-        ("base_url only — api_key blank" if has_base else
-         ("api_key only — base_url blank" if has_key else "no endpoint block"))
-    )
-    print(f"  active.{actor}: {mid!r}  cli_arg={cli!r}  status={status}")
-ep_count = sum(1 for m in models.values() if isinstance(m, dict) and (m.get("endpoint") or {}).get("api_key"))
-print(f"  catalog: {len(models)} model entries; {ep_count} with credentialed endpoints")
+    base = ep.get("base_url", "")
+    if has_base and has_key:
+        print(f"  {actor:<7}  ✅ IMPORTED       model={mid!r}  cli_arg={cli!r}")
+        print(f"           {'':<17}base_url={base}")
+    else:
+        missing = []
+        if not has_base: missing.append("base_url")
+        if not has_key:  missing.append("api_key")
+        print(f"  {actor:<7}  ⚠  INCOMPLETE     model={mid!r} — endpoint missing: {','.join(missing) or 'whole block'}")
+
+# ── Catalog table ────────────────────────────────────────────────────────
+print()
+print(f"=== Catalog ({len(models)} entries) ===")
+if not models:
+    print("  (empty)")
+else:
+    rows = []
+    for mid, m in models.items():
+        actor = m.get("actor", "?")
+        cli   = m.get("cli_arg", mid)
+        if actor == "cursor-subagent":
+            ep_status = "via Cursor IDE"
+        else:
+            ep = m.get("endpoint") or {}
+            if ep.get("base_url") and ep.get("api_key"):
+                ep_status = "endpoint set"
+            elif ep:
+                ep_status = "endpoint partial"
+            else:
+                ep_status = "no endpoint"
+        rows.append((mid, actor, cli, ep_status))
+    w_id    = max(len(r[0]) for r in rows)
+    w_actor = max(len(r[1]) for r in rows)
+    w_cli   = max(len(r[2]) for r in rows)
+    for mid, actor, cli, ep_status in rows:
+        marker = "★" if mid in (active.get("codex"), active.get("claude")) else " "
+        print(f"  {marker} {mid:<{w_id}}  actor={actor:<{w_actor}}  cli_arg={cli:<{w_cli}}  {ep_status}")
 PY
 }
 
