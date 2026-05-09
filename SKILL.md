@@ -47,7 +47,7 @@ Open `<SKILL_DIR>/models.json`. For each model you want to use, fill:
 
 Set `active.codex` / `active.claude` to the chosen model id. Reply **done**.
 
-The agent then runs `backend.sh apply`, which (a) writes `.codex_env.local` / `.claude_env.local` (chmod 600) and (b) automatically invokes `setup_tools.sh` to wire each CLI to its full tool surface (codex MCP servers for web search + URL fetch; claude native WebSearch/WebFetch verified). The tooling step is idempotent — re-running `apply` (or `backend.sh tools` standalone) just reports "already configured". See `models.example.json` for BYOK templates and `docs/MODEL-CAPABILITY-GUIDE.md` for actor capabilities.
+The agent then runs `backend.sh apply` (writes `.codex_env.local` / `.claude_env.local`, chmod 600) and verifies with `backend.sh show`. See `models.example.json` for BYOK templates and `docs/MODEL-CAPABILITY-GUIDE.md` for actor capabilities.
 
 ---
 
@@ -117,7 +117,7 @@ Agent CLIs run with their **full tool surface** (Read, Write, Bash, WebSearch, W
 
 - **Reviewer / aggregator / devils-advocate**: write protection comes from `--permission-mode plan`. No tool allowlist — diagnostic tools (WebSearch, WebFetch, Bash) stay available.
 - **Executor / planner / discussant**: only destructive git operations are blocked (`push`, `rebase`, `reset --hard`, `fetch`, `remote`, `config`).
-- **Web search & URL fetch**: All required CLI tools (`WebSearch`, `WebFetch`, `Bash`, …) are configured automatically during `backend.sh apply` via `setup_tools.sh` — Claude Code uses its native tools; Codex gets `ddg-search` + `fetch` MCP servers wired in. No manual `codex mcp add` step is needed. Re-run `backend.sh tools` any time to verify or reinstall.
+- **Web search**: Claude Code's native `WebSearch` / `WebFetch` are enabled out of the box. Codex CLI's `browser_use` and `in_app_browser` features are stable+enabled; for explicit search add an MCP server (`codex mcp add ddg -- uvx duckduckgo-mcp-server` or similar).
 
 ## Hard rules
 
@@ -169,8 +169,7 @@ $ROUNDTABLE_ROOT/threads/<slug>/
 | `append_turn.sh <slug>` | Land Cursor subagent output into THREAD.md | `--actor`, `--role`, `--model`, `--body-file` |
 | `compact_thread.sh <slug>` | Compact old turns into THREAD_SUMMARY.md | `--keep K` (default 6) |
 | `route.sh --role ROLE` | Rank models by role defaults + signals | `--top N`, `--json`, `--budget`, `--latency`, `--diversity` |
-| `backend.sh <subcmd>` | Manage per-actor endpoints + auto-wire CLI tools | `init`, `apply` (also runs `setup_tools.sh`), `tools`, `show`, `clear`, `codex/claude <url> <key>` |
-| `setup_tools.sh` | Idempotently configure codex MCP + verify claude native tools | (no flags; auto-called by `apply`) |
+| `backend.sh <subcmd>` | Manage per-actor endpoints | `init`, `apply`, `show`, `clear`, `codex/claude <url> <key>` |
 
 ### Env vars
 

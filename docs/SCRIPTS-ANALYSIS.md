@@ -152,8 +152,7 @@ Treat `route.sh` output as a **starting suggestion**, not a mandate. The agent s
 
 - `init` — copies `models.example.json` → `models.json` if not present
 - `show` — prints import status (keys redacted via `***`)
-- `apply` — reads `active` + models from `models.json`, writes `.codex_env.local` / `.claude_env.local` with proper quoting (`printf %q`), `chmod 600`. **After writing env files, automatically calls `setup_tools.sh`** so the freshly-credentialed CLIs come up with their full tool surface.
-- `tools` — standalone wrapper for `setup_tools.sh` (re-verify CLI tooling after a CLI upgrade or to debug a missing MCP server)
+- `apply` — reads `active` + models from `models.json`, writes `.codex_env.local` / `.claude_env.local` with proper quoting (`printf %q`), `chmod 600`
 - `codex` / `claude` subcommands — write individual actor env exports
 - `help-import` — prints user-facing setup instructions
 - `clear` — removes env files
@@ -167,39 +166,6 @@ Treat `route.sh` output as a **starting suggestion**, not a mandate. The agent s
 ### Essential: yes. Replacement by agent: no.
 
 Secret handling must be deterministic and side-effect-free for review.
-
----
-
-## `setup_tools.sh`
-
-### What it does
-
-Wires each agent CLI to its full diagnostic tool surface so the roundtable runs at "full capability" the moment install completes — no manual `codex mcp add` post-step.
-
-1. Sources `OoVMetric/resource/proxy.txt` (or `$ROUNDTABLE_PROXY_FILE`) so PyPI is reachable from the corporate network; exports `UV_INDEX_URL=https://pypi.org/simple/` to bypass local mirrors that don't carry MCP packages.
-2. **Codex CLI** — for each required MCP server (`ddg-search` via `uvx duckduckgo-mcp-server`, `fetch` via `uvx mcp-server-fetch`):
-   - skips if `codex mcp get <name>` already returns a config (idempotent),
-   - otherwise runs `codex mcp add <name> --env http_proxy=… --env UV_INDEX_URL=… -- uvx <pkg>`,
-   - warms the `uvx` cache best-effort so the first request is fast.
-3. **Claude Code** — verifies the binary is on `PATH` and `--allowed-tools` appears in `--help` (proxy for "native WebSearch / WebFetch / Bash / Read / Edit / Write / Grep / Glob are present"). No MCP step needed; per-role surface is enforced inside `claude_turn.sh`.
-4. Prints a 3-bucket summary: newly installed / already configured / failed, plus `codex mcp list`. Exits non-zero only if a required tool failed to install.
-
-### Hard-coded vs. flexible
-
-| Hard-coded | Flexible |
-|-----------|---------|
-| MCP server names (`ddg-search`, `fetch`) and PyPI packages | Proxy file path via `ROUNDTABLE_PROXY_FILE` env |
-| Public PyPI as the uv index | `UV_INDEX_URL` / `UV_DEFAULT_INDEX` env overrides |
-| Idempotency check via `codex mcp get` | — |
-
-### Triggering
-
-- Auto-called at the end of `backend.sh apply`.
-- Standalone via `backend.sh tools` or directly: `scripts/setup_tools.sh`.
-
-### Essential: yes. Replacement by agent: no.
-
-Tool wiring must be deterministic and observable; an LLM picking which MCP servers to install per session would be non-reproducible and would re-pay the install cost on every cold start.
 
 ---
 

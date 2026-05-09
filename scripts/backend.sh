@@ -8,8 +8,6 @@
 #   backend.sh init                            # seed models.json (prints a beginner-friendly walkthrough)
 #   backend.sh help-import                     # reprint the walkthrough any time
 #   backend.sh apply [codex|claude]            # read models.json, write .<actor>_env.local for each `active` actor
-#                                              # then auto-runs setup_tools.sh to wire MCP/native tool surface
-#   backend.sh tools                           # (re)configure CLI tool surface (codex MCP, claude native) only
 #   backend.sh show  [codex|claude]            # inspect current state (api_key redacted)
 #   backend.sh clear <codex|claude>            # remove .<actor>_env.local
 #   backend.sh codex  <base-url> <api-key> [default-model]                     # one-shot direct write (bypasses models.json)
@@ -383,22 +381,6 @@ if applied == 0:
     print("Nothing applied. Edit models.json: set `active.{codex,claude}` to a model id whose entry has an `endpoint` block with both base_url and api_key.", file=sys.stderr)
     sys.exit(2)
 PY
-    # After env files are written, ensure the CLIs themselves are wired up to
-    # their full tool surface (codex MCP servers, claude native tools). This
-    # is part of "install" — agents should never need a manual second step.
-    echo
-    echo "Configuring CLI tools…"
-    if [[ -x "${SKILL_DIR}/scripts/setup_tools.sh" ]]; then
-      "${SKILL_DIR}/scripts/setup_tools.sh" || echo "WARN: setup_tools.sh reported issues; agents may have reduced tool surface." >&2
-    else
-      echo "WARN: ${SKILL_DIR}/scripts/setup_tools.sh missing or not executable; skipping tool wiring." >&2
-    fi
-    ;;
-
-  tools)
-    # Standalone tool wiring (idempotent). Useful after a CLI upgrade or when
-    # the user wants to re-verify the MCP/native surface without rewriting env.
-    exec "${SKILL_DIR}/scripts/setup_tools.sh" "$@"
     ;;
 
   codex)
