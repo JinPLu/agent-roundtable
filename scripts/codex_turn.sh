@@ -16,7 +16,7 @@ Usage: codex_turn.sh <slug> --role ROLE [options]
 
 Required:
   <slug>                Thread slug (must already exist).
-  --role ROLE           planner | executor | reviewer | reviewer-aggregator | discussant
+  --role ROLE           planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
 
 Options:
   -m, --model MODEL     Model name passed to codex (default: from models.json).
@@ -25,6 +25,12 @@ Options:
                         (default: workspace-write for all roles).
   --addendum TEXT       Extra instructions appended to the prompt.
   --addendum-file FILE  File whose contents are appended to the prompt.
+  --blind               Suppress injection of the latest reviewer verdict block into the
+                        prompt. Prevents modal adoption sycophancy (85.5% rate observed
+                        when agents see prior verdicts, per arXiv 2605.00914). Use for
+                        all parallel reviewers in a multi-reviewer round; the aggregator
+                        turn must NOT use --blind (it needs to see all verdicts).
+                        Records blind=true in meta.json.
   --worktree NAME       Use/create a git worktree for this turn.
   --timeout-s SECONDS   Hard wallclock cap for codex; on timeout we still salvage
                         trace.jsonl and emit a turn marked exit=124. Pass 0 to
@@ -45,7 +51,7 @@ done
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 slug="${1:?missing thread slug}"; shift
-role=""; model=""; effort="medium"
+role=""; model=""; effort="medium"; blind=0
 sandbox=""; addendum=""; addendum_file=""; worktree=""
 timeout_s="${ROUNDTABLE_TIMEOUT_S:-1800}"
 while [[ $# -gt 0 ]]; do
@@ -54,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     -m|--model) model="$2"; shift 2;;
     --effort) effort="$2"; shift 2;;
     --sandbox|-s) sandbox="$2"; shift 2;;
+    --blind) blind=1; shift;;
     --addendum) addendum="$2"; shift 2;;
     --addendum-file) addendum_file="$2"; shift 2;;
     --worktree) worktree="$2"; shift 2;;
@@ -136,7 +143,9 @@ GEOF
 fi
 
 mapfile -t _warnings < <(warn_addendum_sanity "$_add" "codex_turn.sh")
-_prompt="$(build_prompt "$thread_dir" "$role" "$_add" "${hist}/prompt.md")"
+# Blind mode: suppress the prior verdict block to prevent modal adoption sycophancy
+# (85.5% adoption rate when agents see prior verdicts, per arXiv 2605.00914).
+_prompt="$(ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" build_prompt "$thread_dir" "$role" "$_add" "${hist}/prompt.md")"
 
 _args=(
   --skip-git-repo-check
@@ -186,11 +195,21 @@ else
   echo "WARNING: last.md is empty AND no agent_message found in trace; check ${hist}/trace.jsonl" >&2
 fi
 
-if [[ ( "$role" == "reviewer" || "$role" == "reviewer-aggregator" ) && -s "${hist}/last.md" ]]; then
+if [[ ( "$role" == "reviewer" || "$role" == "reviewer-aggregator" || "$role" == "devils-advocate" ) && -s "${hist}/last.md" ]]; then
   extract_json_verdict "${hist}/last.md" "${hist}/verdict.json" "codex/${ts_c}"
 fi
 
 write_meta "${hist}/meta.json" "codex" "${model:-default}" "$effort" "$role" "$sandbox" "$_ec" "$_dur" "$hist" "${OPENAI_BASE_URL:-unset}" "${_warnings[@]}"
+
+if [[ "$blind" -eq 1 ]]; then
+  python3 - "${hist}/meta.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d['blind'] = True
+p.write_text(json.dumps(d, indent=2))
+PY
+fi
 
 echo "history=${hist}"
 echo "exit_code=${_ec}"

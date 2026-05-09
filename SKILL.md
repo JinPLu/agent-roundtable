@@ -140,18 +140,56 @@ Skip confirmation only in a pre-agreed convergence loop (user said "keep going u
 
 When the user requests high quality or the goal is complex:
 
-1. **Plan phase** — dispatch `codex-gpt-5` + `claude-opus` in parallel as co-planners (disjoint artifacts). Chat parent merges and asks user to pick or synthesize.
+1. **Plan phase** — single planner (`codex-gpt-5` default, cheapest capable).
+   Optional: dispatch a `reviewer` on the plan artifact as a plan-critic (different actor
+   from planner); planner re-runs at most once.
 2. **Execute phase** — single executor (cheapest capable; `codex-gpt-5` default).
-3. **Review phase** — 2–3 parallel reviewers from **different** actors/vendors (e.g. `codex-gpt-5` + `claude-opus` + `cursor-gemini-3.1-pro`). Cross-vendor catches different failure modes. Each produces a structured JSON verdict.
-4. **Aggregate phase** — `cursor-claude-4.7-opus` (expensive, highest SWE-Pro) synthesizes the N verdicts into one canonical verdict. Reserve this model for aggregation only.
+3. **Review phase** — **2 or 3** parallel reviewers from **different** actors (e.g.
+   `codex-gpt-5` + `claude-opus` + `cursor-gemini-3.1-pro`); never 4+. All parallel
+   reviewer turns MUST use `--blind` (prevents modal adoption sycophancy — 85.5% rate
+   without this guard, per arXiv 2605.00914). At least one reviewer MUST use
+   `--role devils-advocate` (explicit adversarial role yields 99.2% vs 48.3% disagreement
+   rate, per arXiv 2405.09935 / OpenReview mxBmj5LYU2). Each produces a structured JSON
+   verdict independently.
+4. **Aggregate phase** — `cursor-claude-4.7-opus` (expensive) **selects** the most
+   defensible reviewer verdict, merges BLOCKER/MAJOR issues from other reviewers, and
+   records dissent in `dissenting_concerns`. Do **not** synthesise/blend verdicts —
+   selection beats synthesis in 42/42 benchmark tasks (arXiv 2603.20324). The aggregator
+   runs *without* `--blind` (it must see all verdicts).
 
-Parallel review of 3 cheap agents costs roughly the same as a single `cursor-claude-4.7-opus` turn at ~$25/M — but delivers cross-vendor diversity.
+#### Expensive model + cheap companion pairs (Principle A)
+
+Every expensive dispatch MUST spawn a cheap cross-vendor companion in parallel (not
+sequential). If cheap+expensive agree → high confidence. If they disagree → escalate
+disagreement to user as an explicit signal (vendor-local blind spot or ambiguity).
+
+| Expensive dispatch | Cheap companion | Notes |
+|---|---|---|
+| `cursor-claude-4.7-opus` (aggregator) | `codex-gpt-5` | companion runs --blind |
+| `cursor-claude-4.6-sonnet` (executor) | `claude-opus` | companion uses same role |
+| `cursor-gemini-3.1-pro` (reviewer) | `codex-gpt-5` | companion uses --blind |
+
+#### Convergence stop rule (P2 / L14 stability threshold)
+
+Stop the review loop the **first** time ALL hold:
+1. ≥ 1 reviewer returned `COVERED` on every acceptance criterion.
+2. `blocking_issues` contains zero `BLOCKER` entries (MAJOR/MINOR ok).
+3. Disagreement score ≤ threshold (default: ≤ 1 reviewer dissenting out of N).
+
+Hard escape (any one stops the loop and escalates to user):
+- 2 consecutive `stalled` `convergence_status` from the same reviewer.
+- Any `regressed` (new failure family introduced vs prior round).
+- Aggregate cost > MAX_COST_USD (default $5 per thread).
+- Wallclock > MAX_WALL_MIN (default 30).
+
+Parallel review of 3 cheap agents (~$0.07–0.87/M) costs roughly the same as a single
+`cursor-claude-4.7-opus` turn at ~$25/M — but delivers cross-vendor diversity.
 
 ## Hard rules
 
 > **CRITICAL — these rules are non-negotiable. Violating any one is a protocol failure.**
 
-1. **Independent verification**: every agent MUST verify facts by reading actual files and running commands. Do NOT trust any other agent's summaries, self-reported outcomes, or verdicts. Evidence comes from the codebase, not from THREAD.md turn bodies. This is the single most important rule — without it, multi-agent review degenerates into rubber-stamping.
+1. **Independent verification** (Principle B): every agent MUST (1) independently read the listed source files, (2) run the verification commands listed in `GOAL.md`, and (3) THEN consult `THREAD.md` for context. THREAD.md turn bodies are context, not evidence. Do NOT trust any other agent's summaries, self-reported outcomes, or verdicts. Cross-vendor agents share systemic blind spots when relying on upstream summaries (modal adoption sycophancy, 85.5% per arXiv 2605.00914) — independent ground-truth reads break the chain.
 2. **Confirm dispatch**: show the dispatch confirmation block above and wait for user approval before every turn. Skip only in a pre-agreed convergence loop or explicit "dispatch now" instruction — log the skip in the addendum.
 3. **Single writer per path**: no two agents write to the same file concurrently. Parallel turns require disjoint file ownership, separate worktrees, or all-but-one read-only roles.
 4. **No agent recursion**: only the user and chat parent orchestrate. Codex must not invoke claude or cursor-agent; claude must not invoke codex.
@@ -167,11 +205,11 @@ All under `<SKILL_DIR>/scripts/` and executable.
 | Script | Purpose | Notable flags |
 |---|---|---|
 | `new_thread.sh <slug> "<goal>"` | Initialise thread layout + `latest` symlink. | — |
-| `codex_turn.sh <slug> --role ROLE` | One `codex exec` turn. Salvages `last.md` from `trace.jsonl` if codex doesn't flush. | `-m`, `--effort`, `--sandbox`, `--worktree`, `--addendum[-file]`, `--timeout-s` |
-| `claude_turn.sh <slug> --role ROLE` | One `claude -p` turn. Auto-attaches `roles/<role>.system.md` via `--append-system-prompt`. | `--model`, `--effort`, `--permission-mode`, `--bare`, `--worktree`, `--allowed-tools`, `--addendum[-file]` |
+| `codex_turn.sh <slug> --role ROLE` | One `codex exec` turn. Salvages `last.md` from `trace.jsonl` if codex doesn't flush. | `-m`, `--effort`, `--sandbox`, `--blind`, `--worktree`, `--addendum[-file]`, `--timeout-s` |
+| `claude_turn.sh <slug> --role ROLE` | One `claude -p` turn. Auto-attaches `roles/<role>.system.md` via `--append-system-prompt`. | `--model`, `--effort`, `--permission-mode`, `--bare`, `--blind`, `--worktree`, `--allowed-tools`, `--addendum[-file]` |
 | `append_turn.sh <slug>` | Land a Cursor Task subagent's body into `THREAD.md`. | `--actor cursor-subagent`, `--role`, `--model`, `--body-file`, `--prompt-file`, `--tokens-in/-out` |
 | `compact_thread.sh <slug>` | Compact old turns into `THREAD_SUMMARY.md`; keep last K turns in `THREAD.md`. | `--keep K` (default 6), `--dry-run` |
-| `route.sh --role ROLE` | Signal-based routing: rank models by role defaults + task signals. | `--top N`, `--json`, `--cursor-subagent`, `--budget`, `--latency`, `--output-heavy` |
+| `route.sh --role ROLE` | Signal-based routing: rank models by role defaults + task signals. | `--top N`, `--json`, `--cursor-subagent`, `--budget`, `--latency`, `--output-heavy`, `--blind`, `--companion MODEL`, `--diversity` |
 | `backend.sh <subcmd>` | Manage per-actor endpoints. Default flow: `init` → user edits `models.json` → `apply`. | `init`, `apply [actor]`, `show [actor]`, `clear <actor>`, `codex/claude <url> <key> <model>` |
 
 ## Role × default sandbox / permission
@@ -181,6 +219,7 @@ All under `<SKILL_DIR>/scripts/` and executable.
 | **planner** | thread-dir; workspace-write | acceptEdits | Can write `artifacts/plan.md`. Read-only w.r.t. source code. |
 | **executor** | repo-root; workspace-write | acceptEdits + git-destructive disallowed | Only one executor per path at a time. |
 | **reviewer** | thread-dir; workspace-write | plan + reviewer system + `--bare` recommended | Produces structured JSON verdict. Should not write source. |
+| **devils-advocate** | thread-dir; workspace-write | plan + DA system + `--bare` recommended | Adversarial reviewer; always use `--blind`. |
 | **reviewer-aggregator** | thread-dir; workspace-write | plan + reviewer system + `--bare` recommended | Merges N parallel reviewers into one canonical turn. |
 | **discussant** | thread-dir; workspace-write | acceptEdits | Drafts options into `artifacts/`, adds to `OPEN_QUESTIONS.md`. |
 

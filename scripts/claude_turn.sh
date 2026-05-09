@@ -16,7 +16,7 @@ Usage: claude_turn.sh <slug> --role ROLE [options]
 
 Required:
   <slug>                Thread slug (must already exist).
-  --role ROLE           planner | executor | reviewer | reviewer-aggregator | discussant
+  --role ROLE           planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
 
 Options:
   --model MODEL         sonnet | opus | haiku | <full-name> (default from models.json).
@@ -24,6 +24,12 @@ Options:
   --permission-mode M   plan | acceptEdits | auto | dontAsk | bypassPermissions
                         (default: plan for reviewer; acceptEdits otherwise).
   --bare                Pass --bare to claude (skips CLAUDE.md and project customizations).
+  --blind               Suppress injection of the latest reviewer verdict block into the
+                        prompt. Prevents modal adoption sycophancy (85.5% rate observed
+                        when agents see prior verdicts, per arXiv 2605.00914). Use for
+                        all parallel reviewers in a multi-reviewer round; the aggregator
+                        turn must NOT use --blind (it needs to see all verdicts).
+                        Records blind=true in meta.json.
   --worktree NAME       Use/create a git worktree for this turn.
   --allowed-tools LIST  Space-separated tool allowlist (overrides role defaults).
   --addendum TEXT       Extra instructions appended to the prompt.
@@ -49,7 +55,7 @@ done
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 slug="${1:?missing thread slug}"; shift
-role=""; model=""; effort="high"; perm=""; bare=0
+role=""; model=""; effort="high"; perm=""; bare=0; blind=0
 worktree=""; addendum=""; addendum_file=""; allowed_tools_override=""
 timeout_s="${ROUNDTABLE_TIMEOUT_S:-1500}"
 while [[ $# -gt 0 ]]; do
@@ -59,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --effort) effort="$2"; shift 2;;
     --permission-mode) perm="$2"; shift 2;;
     --bare) bare=1; shift;;
+    --blind) blind=1; shift;;
     --worktree) worktree="$2"; shift 2;;
     --allowed-tools) allowed_tools_override="$2"; shift 2;;
     --addendum) addendum="$2"; shift 2;;
@@ -88,7 +95,7 @@ fi
 # get acceptEdits so they can write artifacts under the thread dir.
 if [[ -z "$perm" ]]; then
   case "$role" in
-    reviewer|reviewer-aggregator) perm="plan";;
+    reviewer|reviewer-aggregator|devils-advocate) perm="plan";;
     *) perm="acceptEdits";;
   esac
 fi
@@ -98,6 +105,7 @@ ts_c="$(ts_compact_unique)"
 repo_root="$ROUNDTABLE_REPO_ROOT"
 _role_sys_key="$role"
 [[ "$role" == "reviewer-aggregator" ]] && _role_sys_key="reviewer"
+# devils-advocate has its own system prompt; no alias needed
 role_sys="${SKILL_DIR}/roles/${_role_sys_key}.system.md"
 
 # Load per-actor backend env override (e.g. point claude at DeepSeek's
@@ -130,7 +138,9 @@ _add="${hist}/addendum.md"
 [[ -n "$addendum" ]] && printf '\n%s\n' "$addendum" >> "$_add"
 mapfile -t _warnings < <(warn_addendum_sanity "$_add" "claude_turn.sh")
 # Role guidelines are sent via --append-system-prompt; skip the inline duplicate.
-_prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 build_prompt "$thread_dir" "$role" "$_add" "${hist}/prompt.md")"
+# Blind mode: suppress the prior verdict block to prevent modal adoption sycophancy
+# (85.5% adoption rate when agents see prior verdicts, per arXiv 2605.00914).
+_prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" build_prompt "$thread_dir" "$role" "$_add" "${hist}/prompt.md")"
 
 # Build CLI args.
 _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
@@ -194,11 +204,21 @@ else
   echo "WARNING: empty result; check ${hist}/stderr.log and last.json" >&2
 fi
 
-if [[ ( "$role" == "reviewer" || "$role" == "reviewer-aggregator" ) && -s "${hist}/last.md" ]]; then
+if [[ ( "$role" == "reviewer" || "$role" == "reviewer-aggregator" || "$role" == "devils-advocate" ) && -s "${hist}/last.md" ]]; then
   extract_json_verdict "${hist}/last.md" "${hist}/verdict.json" "claude/${ts_c}"
 fi
 
 write_meta "${hist}/meta.json" "claude" "${model:-default}" "$effort" "$role" "$perm" "$_ec" "$_dur" "$hist" "${ANTHROPIC_BASE_URL:-unset}" "${_warnings[@]}"
+
+if [[ "$blind" -eq 1 ]]; then
+  python3 - "${hist}/meta.json" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+d = json.loads(p.read_text())
+d['blind'] = True
+p.write_text(json.dumps(d, indent=2))
+PY
+fi
 
 echo "history=${hist}"
 echo "exit_code=${_ec}"

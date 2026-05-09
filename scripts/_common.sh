@@ -173,6 +173,10 @@ append_turn_md() {
 #   ROUNDTABLE_SKIP_REPO_CONTEXT   — omit repo context block (default 0)
 #   ROUNDTABLE_SKIP_ROLE_SYS       — omit role guidelines injection (default 0; set 1 for
 #                                    claude_turn.sh which delivers via --append-system-prompt)
+#   ROUNDTABLE_SKIP_LATEST_VERDICT — omit the latest reviewer verdict block (default 0; set 1
+#                                    for blind reviewer turns to prevent modal adoption
+#                                    sycophancy — 85.5% adoption rate observed when agents see
+#                                    prior verdicts, per arXiv 2605.00914)
 build_prompt() {
   local thread_dir="$1" role="$2" addendum_file="$3" out_path="${4:-}"
   local out
@@ -258,7 +262,11 @@ PY
     fi
     printf '\n```\n\n'
 
-    python3 "${SKILL_DIR}/scripts/lib/latest_verdict_block.py" "$thread_dir" "$current_history_dir" 2>/dev/null || true
+    # Blind mode: suppress the prior verdict block to prevent modal adoption sycophancy.
+    # Activated by ROUNDTABLE_SKIP_LATEST_VERDICT=1 (set by --blind in turn scripts).
+    if [[ "${ROUNDTABLE_SKIP_LATEST_VERDICT:-0}" != "1" ]]; then
+      python3 "${SKILL_DIR}/scripts/lib/latest_verdict_block.py" "$thread_dir" "$current_history_dir" 2>/dev/null || true
+    fi
 
     # ── 7. OPEN QUESTIONS (only if file has substantive content) ──────────────
     local oq_file="${thread_dir}/OPEN_QUESTIONS.md"

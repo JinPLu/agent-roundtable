@@ -16,6 +16,7 @@ FALLBACKS = {
     "planner": ["gpt-5.5", "claude-opus"],
     "executor": ["gpt-5.5", "claude-opus"],
     "reviewer": ["gpt-5.5", "claude-opus", "cursor-claude-4.7-opus"],
+    "devils-advocate": ["claude-opus", "gpt-5.5"],
     "discussant": ["gpt-5.5", "claude-opus"],
 }
 
@@ -65,7 +66,7 @@ def _input_cost(model: dict) -> float:
     return model.get("pricing", {}).get("per_1m_input", 999)
 
 
-def apply_signals(rows, *, budget=None, latency=None, output_heavy=False):
+def apply_signals(rows, *, budget=None, latency=None, output_heavy=False, diversity=False):
     """Filter and reorder candidates based on task signals."""
     filtered = list(rows)
 
@@ -91,10 +92,40 @@ def apply_signals(rows, *, budget=None, latency=None, output_heavy=False):
             )
         filtered.sort(key=_quality, reverse=True)
 
+    # Diversity: keep at most one candidate per distinct actor family. This
+    # mechanises Hard Rule #7 — cross-vendor diversity is required for multi-reviewer
+    # rounds (same-actor reviewers exhibit sycophantic conformity, L4 / arXiv 2605.00914).
+    if diversity:
+        seen: set = set()
+        deduped = []
+        for r in filtered:
+            key = r.get("actor")
+            if key not in seen:
+                seen.add(key)
+                deduped.append(r)
+        filtered = deduped
+
     return filtered
 
 
-def recommend(role, top, json_out, cursor_subagent, budget, latency, output_heavy):
+def suggest_companion(primary_row: dict, all_rows: list[dict]) -> dict | None:
+    """Return the cheapest available model from a different actor than primary_row.
+
+    Used to implement Principle A: every expensive dispatch should have a cheap
+    cross-vendor companion running in parallel. The companion must be dispatched
+    with --blind to prevent modal adoption sycophancy.
+    """
+    primary_actor = primary_row.get("actor")
+    candidates = [r for r in all_rows if r.get("actor") != primary_actor]
+    if not candidates:
+        return None
+    return min(candidates, key=_input_cost)
+
+
+def recommend(
+    role, top, json_out, cursor_subagent, budget, latency, output_heavy,
+    diversity=False, blind=False, companion=None,
+):
     try:
         registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
@@ -105,44 +136,83 @@ def recommend(role, top, json_out, cursor_subagent, budget, latency, output_heav
     if not aliases:
         raise SystemExit(f"unknown role: {role}")
 
-    rows = []
+    all_rows = []
     for alias in aliases:
         model = models.get(alias)
         if model and model.get("actor") in available:
-            rows.append({"alias": alias, **model})
+            all_rows.append({"alias": alias, **model})
 
-    has_signals = budget or latency or output_heavy
+    has_signals = budget or latency or output_heavy or diversity
     if has_signals:
         rows = apply_signals(
-            rows, budget=budget, latency=latency, output_heavy=output_heavy
+            all_rows, budget=budget, latency=latency,
+            output_heavy=output_heavy, diversity=diversity,
         )
+    else:
+        rows = list(all_rows)
 
     rows = rows[:top]
 
+    # Resolve companion: either an explicit model name or auto-select cheapest
+    # cross-actor model. Companion is always dispatched with --blind (Principle A).
+    companion_row: dict | None = None
+    if companion == "auto" and rows:
+        companion_row = suggest_companion(rows[0], all_rows)
+    elif companion and companion != "auto":
+        m = models.get(companion)
+        if m and m.get("actor") in available:
+            companion_row = {"alias": companion, **m}
+        else:
+            import sys
+            print(
+                f"WARN: --companion {companion!r} not found or unavailable; skipping",
+                file=sys.stderr,
+            )
+
     if json_out:
-        out = {
+        out: dict = {
             "role": role,
             "available_actors": sorted(available),
             "candidates": rows,
         }
-        if has_signals:
-            out["signals"] = {
-                "budget": budget,
-                "latency": latency,
-                "output_heavy": output_heavy,
+        signal_dict: dict = {}
+        if budget:
+            signal_dict["budget"] = budget
+        if latency:
+            signal_dict["latency"] = latency
+        if output_heavy:
+            signal_dict["output_heavy"] = output_heavy
+        if diversity:
+            signal_dict["diversity"] = True
+        if blind:
+            signal_dict["blind"] = True
+        if signal_dict:
+            out["signals"] = signal_dict
+        if companion_row is not None:
+            out["companion"] = {
+                "model": companion_row,
+                "dispatch_flags": ["--blind"],
+                "note": (
+                    "Cheap cross-vendor companion (Principle A). "
+                    "Dispatch with --blind alongside the primary candidate."
+                ),
             }
         print(json.dumps(out, indent=2))
     else:
         print(f"role={role}")
         print("available_actors=" + ",".join(sorted(available)))
-        if has_signals:
-            parts = []
-            if budget:
-                parts.append(f"budget={budget}")
-            if latency:
-                parts.append(f"latency={latency}")
-            if output_heavy:
-                parts.append("output_heavy")
+        parts = []
+        if budget:
+            parts.append(f"budget={budget}")
+        if latency:
+            parts.append(f"latency={latency}")
+        if output_heavy:
+            parts.append("output_heavy")
+        if diversity:
+            parts.append("diversity")
+        if blind:
+            parts.append("blind")
+        if parts:
             print("signals=" + ",".join(parts))
         for i, row in enumerate(rows, 1):
             benchmarks = row.get("benchmarks", {})
@@ -157,6 +227,14 @@ def recommend(role, top, json_out, cursor_subagent, budget, latency, output_heav
                 f"{i}. {row['actor']}/{row['alias']}"
                 f"  cli_arg={row.get('cli_arg')}"
                 f"  ${cost:.4f}/M-in{bench_str}"
+            )
+        if companion_row is not None:
+            cost = _input_cost(companion_row)
+            print(
+                f"companion (--blind): {companion_row['actor']}/{companion_row['alias']}"
+                f"  cli_arg={companion_row.get('cli_arg')}"
+                f"  ${cost:.4f}/M-in"
+                "  [dispatch alongside primary with --blind; Principle A]"
             )
     return 0 if rows else 1
 
@@ -187,6 +265,37 @@ def main():
         default=False,
         help="Exclude models with max_output_k < 128K",
     )
+    parser.add_argument(
+        "--diversity",
+        action="store_true",
+        default=False,
+        help=(
+            "Return at most one candidate per distinct actor family, enforcing "
+            "cross-vendor diversity (Hard Rule #7). Mechanises the requirement "
+            "that multi-reviewer rounds use agents from different vendors."
+        ),
+    )
+    parser.add_argument(
+        "--blind",
+        action="store_true",
+        default=False,
+        help=(
+            "Tag routing output with blind=true. Signals that every dispatched "
+            "reviewer turn must include --blind to prevent modal adoption sycophancy "
+            "(85.5%% rate when agents see prior verdicts, per arXiv 2605.00914)."
+        ),
+    )
+    parser.add_argument(
+        "--companion",
+        default=None,
+        metavar="auto|MODEL",
+        help=(
+            "Suggest a cheap cross-vendor companion for the primary candidate "
+            "(Principle A). 'auto' selects cheapest available other-actor model; "
+            "MODEL specifies an explicit alias. Companion must be dispatched with "
+            "--blind alongside the primary."
+        ),
+    )
     args = parser.parse_args()
     return recommend(
         args.role,
@@ -196,6 +305,9 @@ def main():
         args.budget,
         args.latency,
         args.output_heavy,
+        diversity=args.diversity,
+        blind=args.blind,
+        companion=args.companion,
     )
 
 
