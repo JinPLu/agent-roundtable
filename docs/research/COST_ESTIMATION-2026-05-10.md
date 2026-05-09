@@ -155,6 +155,14 @@ Migration cost: ~50 lines of `scripts/lib/` to load the pricing JSON snapshot
 and a whitelist; the existing `estimate_cost.py` from the implementation
 subagent owns the heuristic side. No SDK churn.
 
+### 6.1.1 — 2026-05-10 update — implemented
+
+- Vendored a 25-model whitelist of LiteLLM's pricing JSON to `scripts/lib/pricing_snapshot.json`. Cursor variants present as marker entries (`_no_litellm_source: true`) — the estimator continues to read their prices from `models.json`. Refresh manually via `python3 scripts/refresh_pricing_snapshot.py`.
+- Added `scripts/lib/pricing_snapshot.py` loader (per-token → per-1M conversion documented at top). `estimate_cost.py` accepts `--source registry|snapshot|both`; `both` warns when registry vs. snapshot disagree by >10%.
+- Added `scripts/lib/usage_log.py` and `scripts/lib/log_turn_usage.py`; `codex_turn.sh` and `claude_turn.sh` now append a JSONL record per turn to `$ROUNDTABLE_PROJECT_ROOT/.roundtable/usage.log` (schema in §6.4) without altering the wrapper exit status.
+- Added `scripts/recalibrate_token_budgets.py`: prints proposed `ROLE_TOKEN_BUDGETS` / `EFFORT_MULTIPLIERS` based on observed p50; `--apply` rewrites the constants block in `estimate_cost.py` between `# BEGIN_AUTOGEN_*` / `# END_AUTOGEN_*` sentinels. Cells with <5 samples are refused.
+- `ROLE_TOKEN_BUDGETS` numbers were intentionally NOT changed in this commit — the tooling shipped, the recalibration is a future operator action.
+
 ## 7. Open questions / gaps
 
 1. **Cursor Composer 2 token-count truth.** Cursor exposes no

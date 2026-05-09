@@ -141,3 +141,8 @@ Boundary discipline (the user named these explicitly):
 - **discuss vs `superpowers:brainstorming`**: brainstorming is single-agent Socratic Q&A with the user; discuss is multi-vendor parallel research the user reads. Complementary, not redundant.
 
 Reorg commit on `origin/main` immediately following this audit-doc edit.
+
+### Ledger
+
+- `87655a0` — `feat(routing): scripted cost estimation replaces hand-estimates (fixes 20x undercount on thinking models)`
+- `<this commit>` — `feat(routing): vendor LiteLLM pricing snapshot + usage-log recalibration loop` — finishes the work the prior subagent dropped when the host rebooted; ships pricing snapshot, usage-log JSONL hooks in turn wrappers, and the recalibration tool. `ROLE_TOKEN_BUDGETS` numbers are unchanged in this commit; recalibration is a future operator action driven by `scripts/recalibrate_token_budgets.py`.

@@ -186,6 +186,20 @@ p.write_text(json.dumps(d, indent=2))
 PY
 fi
 
+# Append project-wide usage record (best-effort; never alter exit status).
+# See scripts/lib/log_turn_usage.py and docs/research/COST_ESTIMATION-2026-05-10.md §6.4.
+python3 "${SKILL_DIR}/scripts/lib/log_turn_usage.py" \
+  --actor claude \
+  --thread "$slug" \
+  --model "${model:-default}" \
+  --role "$role" \
+  --effort "$effort" \
+  --exit-code "$_ec" \
+  --elapsed-s "$_dur" \
+  --source-file "${hist}/last.json" \
+  >/dev/null 2>>"${hist}/stderr.log" || \
+  echo "WARN [claude_turn.sh]: usage log append failed (non-fatal)" >&2
+
 echo "history=${hist}"
 echo "exit_code=${_ec}"
 echo "duration_s=${_dur}"

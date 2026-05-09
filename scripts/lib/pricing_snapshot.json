@@ -1,0 +1,251 @@
+{
+  "_fetched": "2026-05-10",
+  "_litellm_commit_or_etag": "\"fb46ac177e3a79fb6d8027ebf62cfc817defdb24d605cd8584e4234bf9ee3caa\"",
+  "_models": {
+    "claude-4.6-opus-high-thinking": {
+      "_no_litellm_source": true,
+      "_note": "cursor-claude-4.6-opus thinking variant \u2014 Cursor doesn't publish a LiteLLM id."
+    },
+    "claude-4.6-sonnet-medium-thinking": {
+      "_no_litellm_source": true,
+      "_note": "cursor-claude-4.6-sonnet thinking variant \u2014 Cursor doesn't publish a LiteLLM id."
+    },
+    "claude-opus-4-6": {
+      "_litellm_id": "claude-opus-4-6",
+      "cache_creation_input_token_cost": 6.25e-06,
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 2.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "claude-opus-4-6-20260205": {
+      "_litellm_id": "claude-opus-4-6-20260205",
+      "cache_creation_input_token_cost": 6.25e-06,
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 2.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "claude-opus-4-7": {
+      "_litellm_id": "claude-opus-4-7",
+      "cache_creation_input_token_cost": 6.25e-06,
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 2.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "claude-opus-4-7-20260416": {
+      "_litellm_id": "claude-opus-4-7-20260416",
+      "cache_creation_input_token_cost": 6.25e-06,
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 2.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "claude-opus-4-7-thinking-high": {
+      "_no_litellm_source": true,
+      "_note": "cursor-claude-4.7-opus thinking variant \u2014 Cursor doesn't publish a LiteLLM id."
+    },
+    "claude-sonnet-4-5": {
+      "_litellm_id": "claude-sonnet-4-5",
+      "cache_creation_input_token_cost": 3.75e-06,
+      "cache_read_input_token_cost": 3e-07,
+      "input_cost_per_token": 3e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 200000,
+      "max_output_tokens": 64000,
+      "mode": "chat",
+      "output_cost_per_token": 1.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "claude-sonnet-4-6": {
+      "_litellm_id": "claude-sonnet-4-6",
+      "cache_creation_input_token_cost": 3.75e-06,
+      "cache_read_input_token_cost": 3e-07,
+      "input_cost_per_token": 3e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 64000,
+      "mode": "chat",
+      "output_cost_per_token": 1.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "composer-2-fast": {
+      "_no_litellm_source": true,
+      "_note": "Cursor Composer 2 \u2014 Cursor pool, no LiteLLM key. Pricing in models.json."
+    },
+    "deepseek-v4-flash": {
+      "_no_litellm_source": true,
+      "_note": "DeepSeek v4-flash \u2014 not in LiteLLM as of 2026-05-10."
+    },
+    "deepseek-v4-pro": {
+      "_no_litellm_source": true,
+      "_note": "DeepSeek v4-pro \u2014 not in LiteLLM as of 2026-05-10."
+    },
+    "deepseek-v4-pro[1m]": {
+      "_no_litellm_source": true,
+      "_note": "DeepSeek v4-pro long-context flag \u2014 not in LiteLLM."
+    },
+    "gemini-3.1-pro": {
+      "_no_litellm_source": true,
+      "_note": "cursor-gemini-3.1-pro short id \u2014 LiteLLM uses `gemini-3.1-pro-preview`."
+    },
+    "gemini-3.1-pro-preview": {
+      "_litellm_id": "gemini-3.1-pro-preview",
+      "cache_read_input_token_cost": 2e-07,
+      "input_cost_per_token": 2e-06,
+      "litellm_provider": "vertex_ai-language-models",
+      "max_input_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "mode": "chat",
+      "output_cost_per_token": 1.2e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5-codex": {
+      "_litellm_id": "gpt-5-codex",
+      "cache_read_input_token_cost": 1.25e-07,
+      "input_cost_per_token": 1.25e-06,
+      "litellm_provider": "openai",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "mode": "responses",
+      "output_cost_per_token": 1e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.3-codex": {
+      "_litellm_id": "gpt-5.3-codex",
+      "cache_read_input_token_cost": 1.75e-07,
+      "input_cost_per_token": 1.75e-06,
+      "litellm_provider": "openai",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "mode": "responses",
+      "output_cost_per_token": 1.4e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.4": {
+      "_litellm_id": "gpt-5.4",
+      "cache_read_input_token_cost": 2.5e-07,
+      "input_cost_per_token": 2.5e-06,
+      "litellm_provider": "openai",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 1.5e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.4-medium": {
+      "_no_litellm_source": true,
+      "_note": "cursor-gpt-5.4 effort variant \u2014 Cursor doesn't publish a LiteLLM id."
+    },
+    "gpt-5.4-mini": {
+      "_litellm_id": "gpt-5.4-mini",
+      "cache_read_input_token_cost": 7.5e-08,
+      "input_cost_per_token": 7.5e-07,
+      "litellm_provider": "openai",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 4.5e-06,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.4-nano": {
+      "_litellm_id": "gpt-5.4-nano",
+      "cache_read_input_token_cost": 2e-08,
+      "input_cost_per_token": 2e-07,
+      "litellm_provider": "openai",
+      "max_input_tokens": 272000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 1.25e-06,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.5": {
+      "_litellm_id": "gpt-5.5",
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "openai",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 3e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.5-2026-04-23": {
+      "_litellm_id": "gpt-5.5-2026-04-23",
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "openai",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 3e-05,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    },
+    "gpt-5.5-medium": {
+      "_no_litellm_source": true,
+      "_note": "cursor-gpt-5.5 effort variant \u2014 Cursor doesn't publish a LiteLLM id."
+    },
+    "gpt-5.5-pro": {
+      "_litellm_id": "gpt-5.5-pro",
+      "cache_read_input_token_cost": 3e-06,
+      "input_cost_per_token": 3e-05,
+      "litellm_provider": "openai",
+      "max_input_tokens": 1050000,
+      "max_output_tokens": 128000,
+      "mode": "responses",
+      "output_cost_per_token": 0.00018,
+      "supports_prompt_caching": true,
+      "supports_reasoning": true,
+      "supports_tool_choice": true
+    }
+  },
+  "_no_litellm_source_count": 10,
+  "_schema": "Pricing values are PER-TOKEN (LiteLLM native). Helpers in scripts/lib/pricing_snapshot.py convert to per-1M for downstream consumers. _no_litellm_source=true rows have no pricing \u2014 caller must fall back to models.json. See COST_ESTIMATION-2026-05-10.md \u00a76.1.",
+  "_source": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+  "_whitelist_size": 15
+}

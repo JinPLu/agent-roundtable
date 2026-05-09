@@ -44,7 +44,7 @@ Proposed dispatch
 Proceed? Or adjust actor / effort / budget / go multi?
 ```
 
-The chat parent MUST run `route.sh ... --estimate` (or `scripts/lib/estimate_cost.py --model <alias> --role <role>` directly) before showing the confirmation; do not hand-estimate. Token *rates* in `models.json` are correct — past 20x undercounts came from guessing token *counts* for thinking-mode and agentic turns. The estimator's heuristic table lives at the top of `scripts/lib/estimate_cost.py` and is the auditable contract; recalibrate quarterly.
+The chat parent MUST run `route.sh ... --estimate` (or `scripts/lib/estimate_cost.py --model <alias> --role <role>` directly) before showing the confirmation; do not hand-estimate. Token *rates* in `models.json` are correct — past 20x undercounts came from guessing token *counts* for thinking-mode and agentic turns. The estimator's heuristic table lives at the top of `scripts/lib/estimate_cost.py` and is the auditable contract. After each turn completes, `codex_turn.sh` / `claude_turn.sh` append a record to `$ROUNDTABLE_PROJECT_ROOT/.roundtable/usage.log`; run `python3 scripts/recalibrate_token_budgets.py --since-days 30` quarterly to retune the heuristic against actual usage (`--apply` rewrites the budget table in place between sentinel comments). Pricing for non-Cursor models can also be cross-checked against the vendored LiteLLM snapshot via `--source snapshot`; refresh with `python3 scripts/refresh_pricing_snapshot.py`.
 
 Sub-skills cite this block by name. Do not duplicate it elsewhere.
 

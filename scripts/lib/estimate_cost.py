@@ -11,6 +11,15 @@ output and is billed as output tokens. Token *rates* in `models.json` /
 script encodes per-role / per-effort token-count buckets so the dispatch
 confirmation block can show a defensible band instead of a guess.
 
+Pricing source resolution (--source flag)
+-----------------------------------------
+  registry  default — use models.json / models.example.json `pricing` block.
+  snapshot  use scripts/lib/pricing_snapshot.json (vendored LiteLLM whitelist).
+            For Cursor pool models (cursor-*, no LiteLLM key) we transparently
+            fall back to registry — they have no other source of truth.
+  both      compute against each, warn (in result.notes) when the rates
+            disagree by > 10% so the user knows the registry is stale.
+
 Calibration source & freshness
 ------------------------------
   See ../../docs/research/AGENT_LOOPS-2026-05-10.md for the empirical
@@ -44,6 +53,16 @@ import pathlib
 import sys
 
 _SKILL_DIR = pathlib.Path(__file__).resolve().parents[2]
+_HERE = pathlib.Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+# Pricing-snapshot loader (lazy to keep estimate_cost importable when the
+# snapshot is missing — first-run on a fresh clone).
+try:
+    import pricing_snapshot as _ps  # type: ignore  # noqa: E402
+except ImportError:  # pragma: no cover — only triggers if file is gone
+    _ps = None  # type: ignore
 
 
 def _default_registry() -> pathlib.Path:
@@ -138,6 +157,90 @@ def _load_registry(registry_path: pathlib.Path) -> dict:
         raise SystemExit(f"failed to parse {registry_path}: {exc}") from exc
 
 
+PRICING_SOURCES = ("registry", "snapshot", "both")
+_SNAPSHOT_DISAGREE_PCT = 10.0
+
+
+def _resolve_pricing(model: dict, source: str) -> tuple[float, float, list[str]]:
+    """Return (per_1m_input, per_1m_output, notes) honouring `source`.
+
+    `source` is one of registry|snapshot|both. Cursor pool models always fall
+    back to the registry (LiteLLM has no Cursor keys, and the project's only
+    source of truth is `models.json`). The notes list is appended verbatim
+    to the user-facing estimate output so the resolution path is auditable.
+    """
+    notes: list[str] = []
+    pricing = model.get("pricing") or {}
+    reg_in = float(pricing.get("per_1m_input") or 0.0)
+    reg_out = float(pricing.get("per_1m_output") or 0.0)
+
+    if source == "registry":
+        return reg_in, reg_out, notes
+
+    snap_in: float | None = None
+    snap_out: float | None = None
+    snap_id: str | None = None
+    if _ps is not None:
+        # The snapshot is keyed by LiteLLM canonical id, which matches our
+        # `cli_arg` for non-Cursor models (e.g. `gpt-5.5`, `claude-opus-4-7`).
+        # Cursor's `cli_arg` slugs (`composer-2-fast`, `claude-opus-4-7-thinking-high`)
+        # are stub entries (_no_litellm_source: true) so this returns None
+        # and we keep registry pricing.
+        cli = model.get("cli_arg")
+        if cli:
+            snap = _ps.get_model_pricing(cli)
+            if snap is not None:
+                snap_in = snap["per_1m_input"]
+                snap_out = snap["per_1m_output"]
+                snap_id = snap.get("_litellm_id", cli)
+
+    if source == "snapshot":
+        if snap_in is None or snap_out is None:
+            notes.append(
+                "Pricing source: registry (snapshot has no entry for this model — "
+                "expected for Cursor pool / proxy / DeepSeek BYOK rows)."
+            )
+            return reg_in, reg_out, notes
+        notes.append(
+            f"Pricing source: LiteLLM snapshot ({snap_id}); ${snap_in:.2f}/M in, "
+            f"${snap_out:.2f}/M out."
+        )
+        return snap_in, snap_out, notes
+
+    # both: prefer snapshot if available, but warn on > _SNAPSHOT_DISAGREE_PCT diff.
+    if snap_in is None or snap_out is None:
+        notes.append(
+            "Pricing source: registry only (no LiteLLM snapshot entry; Cursor/proxy/BYOK)."
+        )
+        return reg_in, reg_out, notes
+
+    def _pct(a: float, b: float) -> float:
+        if b <= 0:
+            return 0.0 if a == 0 else 100.0
+        return abs(a - b) / b * 100.0
+
+    in_drift = _pct(snap_in, reg_in) if reg_in > 0 else None
+    out_drift = _pct(snap_out, reg_out) if reg_out > 0 else None
+    big_drift = (
+        (in_drift is not None and in_drift > _SNAPSHOT_DISAGREE_PCT)
+        or (out_drift is not None and out_drift > _SNAPSHOT_DISAGREE_PCT)
+    )
+    if big_drift:
+        notes.append(
+            "WARNING: registry vs LiteLLM snapshot pricing disagree by "
+            f">{_SNAPSHOT_DISAGREE_PCT:.0f}% "
+            f"(registry: ${reg_in:.4f}/M in / ${reg_out:.4f}/M out; "
+            f"snapshot: ${snap_in:.4f}/M in / ${snap_out:.4f}/M out). "
+            "Refresh `scripts/lib/pricing_snapshot.json` or update `models.json`."
+        )
+    else:
+        notes.append(
+            f"Pricing source: LiteLLM snapshot ({snap_id}) — within "
+            f"{_SNAPSHOT_DISAGREE_PCT:.0f}% of registry."
+        )
+    return snap_in, snap_out, notes
+
+
 def estimate(
     alias: str,
     role: str,
@@ -147,6 +250,7 @@ def estimate(
     max_mode: bool = False,
     teams: bool = False,
     registry_path: pathlib.Path | None = None,
+    source: str = "registry",
 ) -> dict:
     """Compute a per-dispatch USD band and return a structured result dict.
 
@@ -155,6 +259,10 @@ def estimate(
     """
     if turns < 1:
         raise SystemExit(f"--turns must be >= 1, got {turns}")
+    if source not in PRICING_SOURCES:
+        raise SystemExit(
+            f"unknown pricing source: {source!r}; known: {list(PRICING_SOURCES)}"
+        )
     budgets = ROLE_TOKEN_BUDGETS.get(role)
     if not budgets:
         raise SystemExit(
@@ -182,9 +290,7 @@ def estimate(
     output_key = "output_thinking" if thinking else "output_chat"
     output_per_turn = int(round(budgets[output_key] * mult["output"]))
 
-    pricing = model.get("pricing") or {}
-    per_in = float(pricing.get("per_1m_input") or 0.0)
-    per_out = float(pricing.get("per_1m_output") or 0.0)
+    per_in, per_out, source_notes = _resolve_pricing(model, source)
 
     effective_per_in = per_in
     if max_mode and input_per_turn > MAX_MODE_INPUT_THRESHOLD:
@@ -211,7 +317,7 @@ def estimate(
         reasoning_tokens_per_turn = max(0, output_per_turn - chat_baseline)
         reasoning_share = round(reasoning_tokens_per_turn / output_per_turn, 2)
 
-    notes: list[str] = []
+    notes: list[str] = list(source_notes)
     if thinking:
         notes.append(
             "Thinking-mode output includes reasoning tokens; billed as output. "
@@ -272,6 +378,7 @@ def estimate(
         "max_mode": bool(max_mode),
         "teams": bool(teams),
         "registry": registry_path.name,
+        "pricing_source": source,
         "notes": notes,
     }
 
@@ -356,6 +463,7 @@ def format_json(result: dict) -> str:
         "max_mode": result["max_mode"],
         "teams": result["teams"],
         "registry": result["registry"],
+        "pricing_source": result.get("pricing_source", "registry"),
         "notes": result["notes"],
     }
     return json.dumps(payload, indent=2)
@@ -415,6 +523,17 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="explicit path to a models.json-style registry (overrides default lookup)",
     )
+    parser.add_argument(
+        "--source",
+        choices=list(PRICING_SOURCES),
+        default="registry",
+        help=(
+            "Pricing source: 'registry' (models.json default), 'snapshot' "
+            "(scripts/lib/pricing_snapshot.json — vendored LiteLLM whitelist), "
+            "or 'both' (snapshot when present, warn if registry/snapshot diverge "
+            f">{int(_SNAPSHOT_DISAGREE_PCT)}%)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     registry_path = pathlib.Path(args.registry) if args.registry else None
@@ -426,6 +545,7 @@ def main(argv: list[str] | None = None) -> int:
         max_mode=args.max_mode,
         teams=args.teams,
         registry_path=registry_path,
+        source=args.source,
     )
     if args.json:
         print(format_json(result))
