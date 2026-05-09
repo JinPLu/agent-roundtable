@@ -3,6 +3,7 @@ __pycache__/
 *.env.local
 .claude_env.local
 .codex_env.local
+wizard.in
 
 # OS
 .DS_Store

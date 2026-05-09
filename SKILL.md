@@ -1,6 +1,6 @@
 ---
 name: agent-roundtable
-description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. On first invocation runs an interactive wizard (AskQuestion + WebSearch) to configure each actor's API endpoint, key, and model — then auto-populates models.json with the researched capabilities.
+description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. On first invocation runs a file-based wizard (user edits one chmod-600 template, agent reads non-secret fields, WebSearches each model, writes the .local env files, shreds the template) to configure each actor's API endpoint, key, and model — then auto-populates models.json with the researched capabilities. The api_key never enters chat history or the agent's context.
 disable-model-invocation: true
 ---
 
@@ -12,32 +12,19 @@ A thin file-based substrate where participants take turns around a shared on-dis
 
 > **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as "not configured" and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
 
-Step-by-step (the agent runs this, not the user):
+The wizard is **file-based** — the user fills in a template, the agent reads only the non-secret fields, and the api_key is shredded the moment the `.local` files are written. The key never enters chat history *or* the agent's context window.
 
-1. **Probe**: `scripts/backend.sh show` — if both actors print "not configured", continue; otherwise show the current config and ask the user whether to keep, switch, or add the missing actor.
-2. **Ask which actor** via `AskQuestion` (one question, options: `codex` / `claude` / `both` / `skip`). This is the only multi-choice ask — everything else is one bundled chat ask.
-3. **Bundled chat ask** (one chat message, the user replies with all four values together — base URL, API key, and model belong to the same triple per actor):
-   ```
-   Please paste your config (per actor) in a single block. Treat the key as a secret —
-   I will write it straight to the chmod-600 .local file via backend.sh and never echo it.
+Step-by-step (the agent runs every step except #2 — the user only edits one file):
 
-   For codex (OpenAI-compatible):
-     base_url: <e.g. https://api.openai.com/v1>
-     api_key:  <sk-...>
-     model:    <e.g. gpt-4o>
+1. **Probe + initialise**: run `scripts/backend.sh show`. If both actors are "not configured", run `scripts/backend.sh wizard-init` to write `<SKILL_DIR>/wizard.in` (chmod 600, gitignored) — a template with `[codex]` and `[claude]` blocks plus a comment block of common preset URLs.
+2. **User edits the file**: tell the user to open `<SKILL_DIR>/wizard.in`, fill in `base_url`, `api_key`, `model` for whichever actor(s) they want, save, and reply `done` (or any acknowledgement). Leave a block's `api_key` blank to skip that actor.
+3. **Peek (non-secret)**: `scripts/backend.sh wizard-peek` — prints `actor=… base_url=… model=… api_key=<set|blank>` per block. The agent reads this output (no api_key in it) to learn which models to research.
+4. **Research capabilities**: call `WebSearch` with each model id + provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If WebSearch returns nothing reliable, ask the user for a docs/pricing URL and `WebFetch` it.
+5. **Apply**: `scripts/backend.sh wizard-apply` — parses `wizard.in`, writes `.codex_env.local` and/or `.claude_env.local` via the same `backend.sh codex/claude` codepaths, prints `APPLIED actor=… base_url=… model=…` lines, then **shreds `wizard.in`**. The agent never reads `wizard.in` directly — only the apply script does, so the api_key doesn't enter the agent's context.
+6. **Update `models.json`**: append (or replace) an entry for each applied model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
+7. **Verify**: `scripts/backend.sh show` (key redacted) + `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` to confirm the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
 
-   For claude (Anthropic-compatible):
-     base_url: <e.g. https://api.anthropic.com>
-     api_key:  <sk-ant-...>
-     model:    <e.g. claude-opus-4-5>   # used for opus/sonnet/haiku tiers
-   ```
-   Common preset URLs the agent should suggest inline so the user can just confirm: OpenAI `https://api.openai.com/v1` · Anthropic `https://api.anthropic.com` · cialloapi `https://api.cialloapi.cn/v1` · DeepSeek-compat `https://api.deepseek.com/anthropic`.
-4. **Research capabilities**: call `WebSearch` with the model id and provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If web search returns nothing reliable, ask the user to paste a docs/pricing URL and `WebFetch` it.
-5. **Write the env file**: `scripts/backend.sh <actor> <base-url> <api-key> <model>` (one call per actor configured).
-6. **Update `models.json`**: append (or replace) an entry for the new model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Then add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
-7. **Verify**: `scripts/backend.sh show` redacts the key; `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` confirms the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
-
-The wizard is idempotent — re-running it overwrites the `.local` file and the matching `models.json` entry.
+The wizard is idempotent — re-running `wizard-init` requires you to first `rm wizard.in`; re-running `wizard-apply` overwrites the `.local` files. Editing `models.json` by hand for benchmark/pricing tweaks is fine and survives re-runs.
 
 ## Architecture — who does what
 
@@ -117,7 +104,7 @@ All under `<SKILL_DIR>/scripts/` and executable.
 | `append_turn.sh <slug>` | Land a Cursor Task subagent's body into `THREAD.md`. | `--actor cursor-subagent`, `--role`, `--model`, `--body-file`, `--prompt-file`, `--tokens-in/-out` |
 | `compact_thread.sh <slug>` | Compact old turns into `THREAD_SUMMARY.md`; keep last K turns in `THREAD.md`. | `--keep K` (default 6), `--dry-run` |
 | `route.sh --role ROLE` | Signal-based routing: rank models by role defaults + task signals. | `--top N`, `--json`, `--cursor-subagent`, `--budget`, `--latency`, `--output-heavy` |
-| `backend.sh <actor> ...` | Point codex / claude actor at any OpenAI / Anthropic-compatible endpoint. | `show`, `clear <actor>` |
+| `backend.sh <actor> ...` | Point codex / claude actor at any OpenAI / Anthropic-compatible endpoint. | `show`, `clear <actor>`, `wizard-init`, `wizard-peek`, `wizard-apply` |
 
 ## Role × default sandbox / permission
 

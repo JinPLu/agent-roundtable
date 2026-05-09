@@ -8,19 +8,21 @@
 #   backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model]
 #   backend.sh show   [codex|claude]
 #   backend.sh clear  <codex|claude>
+#   backend.sh wizard-init                    # write fill-in template the user edits
+#   backend.sh wizard-apply                   # read filled template, write .local files, shred template
 #
-# Examples:
-#   # Codex → official OpenAI:
-#   backend.sh codex https://api.openai.com/v1 sk-... gpt-4o
+# Wizard flow (agent runs these; user only edits the file):
+#   1. backend.sh wizard-init  → creates <SKILL_DIR>/wizard.in (chmod 600, gitignored)
+#   2. user fills in [codex] and/or [claude] blocks, saves the file
+#   3. backend.sh wizard-apply → parses file, calls `codex`/`claude` subcommands per
+#      filled block, prints non-secret metadata (actor / base_url / model) on stdout
+#      so the agent can WebSearch each model, then shreds wizard.in.
 #
-#   # Codex → cialloapi proxy:
-#   backend.sh codex https://api.cialloapi.cn/v1 sk-... gpt-5.5
-#
-#   # Claude → official Anthropic:
-#   backend.sh claude https://api.anthropic.com sk-ant-... claude-opus-4-5
-#
-#   # Claude → DeepSeek Anthropic-compat (single model for all tiers):
-#   backend.sh claude https://api.deepseek.com/anthropic sk-... deepseek-v4-pro[1m]
+# Examples (direct, non-wizard):
+#   backend.sh codex  https://api.openai.com/v1            sk-...        gpt-4o
+#   backend.sh codex  https://api.cialloapi.cn/v1          sk-...        gpt-5.5
+#   backend.sh claude https://api.anthropic.com            sk-ant-...    claude-opus-4-5
+#   backend.sh claude https://api.deepseek.com/anthropic   sk-...        deepseek-v4-pro[1m]
 
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -86,6 +88,101 @@ case "$cmd" in
     } > "$out"
     chmod 600 "$out"
     echo "wrote $out (chmod 600)"
+    ;;
+  wizard-init)
+    out="${SKILL_DIR}/wizard.in"
+    if [[ -e "$out" ]]; then
+      echo "ERROR: $out already exists. Edit it directly, or 'rm $out' to start over." >&2
+      exit 2
+    fi
+    cat > "$out" <<'TPL'
+# agent-roundtable wizard input — fill in, save, then run `backend.sh wizard-apply`
+# (or just tell the agent "done"). The agent will:
+#   - read THIS file's non-secret fields (actor, base_url, model) for WebSearch
+#   - call backend.sh wizard-apply, which writes .codex_env.local / .claude_env.local
+#     and then SHREDS this file so the api_key doesn't linger on disk.
+#
+# Lines starting with `#` are ignored. Leave api_key blank for any actor you want
+# to skip. base_url should NOT have a trailing slash.
+#
+# Common preset URLs (paste into base_url to use):
+#   OpenAI            https://api.openai.com/v1
+#   Anthropic         https://api.anthropic.com
+#   cialloapi         https://api.cialloapi.cn/v1
+#   DeepSeek-compat   https://api.deepseek.com/anthropic
+#   Azure OpenAI      https://<resource>.openai.azure.com/openai/v1
+
+[codex]
+base_url:
+api_key:
+model:
+
+[claude]
+base_url:
+api_key:
+model:
+TPL
+    chmod 600 "$out"
+    echo "wrote $out (chmod 600)"
+    echo "Edit it (e.g. open in your editor), save, then run: $0 wizard-apply"
+    ;;
+  wizard-peek)
+    in="${SKILL_DIR}/wizard.in"
+    [[ -r "$in" ]] || { echo "ERROR: $in not found. Run '$0 wizard-init' first." >&2; exit 2; }
+    python3 - "$in" <<'PY'
+import re, sys, pathlib
+text = pathlib.Path(sys.argv[1]).read_text()
+section = None
+sections = {}
+for line in text.splitlines():
+    s = line.strip()
+    if not s or s.startswith('#'): continue
+    m = re.match(r'\[(\w+)\]\s*$', s)
+    if m: section = m.group(1); sections[section] = {}; continue
+    if section and ':' in s:
+        k, _, v = s.partition(':')
+        sections[section][k.strip()] = v.strip()
+for actor in ('codex', 'claude'):
+    kv = sections.get(actor, {})
+    has_key = bool(kv.get('api_key'))
+    print(f"actor={actor} base_url={kv.get('base_url','')!r} model={kv.get('model','')!r} api_key={'<set>' if has_key else '<blank>'}")
+PY
+    ;;
+  wizard-apply)
+    in="${SKILL_DIR}/wizard.in"
+    [[ -r "$in" ]] || { echo "ERROR: $in not found. Run '$0 wizard-init' first." >&2; exit 2; }
+    python3 - "$in" "$0" <<'PY'
+import re, sys, subprocess, pathlib
+inp, script = sys.argv[1], sys.argv[2]
+text = pathlib.Path(inp).read_text()
+section, sections = None, {}
+for line in text.splitlines():
+    s = line.strip()
+    if not s or s.startswith('#'): continue
+    m = re.match(r'\[(\w+)\]\s*$', s)
+    if m: section = m.group(1); sections[section] = {}; continue
+    if section and ':' in s:
+        k, _, v = s.partition(':')
+        sections[section][k.strip()] = v.strip()
+applied = []
+for actor in ('codex', 'claude'):
+    kv = sections.get(actor, {})
+    base, key, model = kv.get('base_url',''), kv.get('api_key',''), kv.get('model','')
+    if not key: continue
+    if not base: print(f"SKIP {actor}: api_key set but base_url blank", file=sys.stderr); continue
+    cmd = [script, actor, base, key, model] if model else [script, actor, base, key]
+    r = subprocess.run(cmd, check=False)
+    if r.returncode != 0: sys.exit(r.returncode)
+    applied.append((actor, base, model))
+    print(f"APPLIED actor={actor} base_url={base} model={model}")
+if not applied:
+    print("No actor blocks had a non-empty api_key; nothing applied.", file=sys.stderr); sys.exit(2)
+PY
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$in" 2>/dev/null && echo "shredded $in"
+    else
+      rm -f "$in" && echo "removed $in (shred unavailable)"
+    fi
     ;;
   *)
     echo "unknown command: $cmd" >&2
