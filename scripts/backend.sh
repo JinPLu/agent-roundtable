@@ -5,21 +5,19 @@
 # source before invoking the CLI.
 #
 # Usage:
-#   backend.sh init                            # seed models.json from models.example.json (no-op if it already exists)
+#   backend.sh init                            # seed models.json (prints a beginner-friendly walkthrough)
+#   backend.sh help-import                     # reprint the walkthrough any time
 #   backend.sh apply [codex|claude]            # read models.json, write .<actor>_env.local for each `active` actor
 #   backend.sh show  [codex|claude]            # inspect current state (api_key redacted)
 #   backend.sh clear <codex|claude>            # remove .<actor>_env.local
 #   backend.sh codex  <base-url> <api-key> [default-model]                     # one-shot direct write (bypasses models.json)
 #   backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model] [effort-level]
 #
-# Default flow (file-based, secret never enters chat or agent context):
-#   1. backend.sh init            # creates <SKILL_DIR>/models.json from the example catalog
-#   2. user opens <SKILL_DIR>/models.json in their editor:
-#        - finds (or adds) a model entry under `models.<id>`
-#        - adds `"endpoint": {"base_url": "...", "api_key": "...", optional opus_model/…}` to that entry
-#        - sets `active.codex` and/or `active.claude` to the model id
-#        - saves
-#   3. backend.sh apply           # writes the .<actor>_env.local files
+# Default flow (single source of truth in models.json; secret never enters chat or agent context):
+#   1. backend.sh init       — creates <SKILL_DIR>/models.json + prints walkthrough
+#   2. user edits models.json, replaces `_template` with their model entry
+#      (4 fields: actor / cli_arg / endpoint.base_url / endpoint.api_key)
+#   3. backend.sh apply      — writes the .<actor>_env.local files
 
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,6 +31,135 @@ esac
 cmd="$1"; shift
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+# Long-form import walkthrough printed by `init` (after seeding models.json) and
+# by the `help-import` subcommand. Targeted at someone who has never seen this
+# skill before — explains what the file is, what each field means, and gives
+# three concrete copy-paste-ready examples (OpenAI / Anthropic / Anthropic-shim).
+_print_import_walkthrough() {
+  local mf="${SKILL_DIR}/models.json"
+  cat <<EOF
+
+──────────────────────────────────────────────────────────────────────
+  HOW TO IMPORT A MODEL — first-time setup, ~2 min
+──────────────────────────────────────────────────────────────────────
+
+WHAT IS \`models.json\`?
+  Your private model registry for the agent-roundtable skill. It tells
+  the skill which models you have credentials for and where to send
+  API requests. Stored at:
+    $mf
+  (chmod 600 — only you can read it; gitignored — never committed.)
+
+THE CONTRACT
+  YOU fill 4 fields per model.
+  THE AGENT fills the rest (benchmarks, pricing, context window, …)
+  by WebSearch on the next chat turn.
+
+  Field      Meaning
+  -----      -------
+  actor      Which CLI talks to this model: "codex" or "claude"
+               codex  → any OpenAI-compatible endpoint
+               claude → any Anthropic-compatible endpoint
+  cli_arg    The exact model id the API expects in its 'model' param
+             (e.g. "gpt-5", "claude-opus-4-5", "deepseek-v4-pro[1m]").
+             NOT your nickname for it.
+  base_url   The API root URL, no trailing slash.
+  api_key    Your secret key.
+
+────────────────────────────────────────────────────────
+STEP 1 — open the file in your editor
+────────────────────────────────────────────────────────
+  \$EDITOR $mf
+
+────────────────────────────────────────────────────────
+STEP 2 — replace the \`_template\` entry under "models"
+────────────────────────────────────────────────────────
+  Pick the example below that matches your provider, paste it in
+  place of \`_template\`, and fill in your real base_url + api_key.
+  (You can keep multiple models — just give each one a unique key.)
+
+  ── OpenAI / Azure / cialloapi / any OpenAI-compat ──
+  "gpt-5": {
+    "actor":   "codex",
+    "cli_arg": "gpt-5",
+    "endpoint": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key":  "sk-..."
+    }
+  }
+
+  ── Anthropic official ──
+  "claude-opus-4-5": {
+    "actor":   "claude",
+    "cli_arg": "claude-opus-4-5",
+    "endpoint": {
+      "base_url": "https://api.anthropic.com",
+      "api_key":  "sk-ant-..."
+    }
+  }
+
+  ── DeepSeek / any Anthropic-compat shim ──
+  (Shims map Claude Code's opus/sonnet/haiku tiers onto upstream model
+  ids that don't include 'claude'; specify each tier explicitly.)
+  "deepseek-pro": {
+    "actor":   "claude",
+    "cli_arg": "deepseek-v4-pro[1m]",
+    "endpoint": {
+      "base_url":     "https://api.deepseek.com/anthropic",
+      "api_key":      "sk-...",
+      "opus_model":   "deepseek-v4-pro[1m]",
+      "sonnet_model": "deepseek-v4-pro[1m]",
+      "haiku_model":  "deepseek-v4-flash"
+    }
+  }
+
+────────────────────────────────────────────────────────
+STEP 3 — set \`active\` (top of the file)
+────────────────────────────────────────────────────────
+  Point each actor at one of your model ids:
+
+    "active": {
+      "codex":  "gpt-5",         // or null to skip codex
+      "claude": "deepseek-pro"   // or null to skip claude
+    }
+
+  Leave a value as null to make that actor fall back to its own
+  CLI login (\`codex login\` / \`claude auth login\`).
+
+────────────────────────────────────────────────────────
+STEP 4 — save the file, then tell the agent in chat
+────────────────────────────────────────────────────────
+  Just say "go" or "done". The agent will:
+    1. read the non-secret fields (api_key never enters chat or context)
+    2. WebSearch each new model → fill in underlying / context_window_k
+       / max_output_k / benchmarks / best_for / pricing
+    3. update role_defaults so route.sh can recommend your model
+    4. run \`scripts/backend.sh apply\` (writes chmod-600 env files)
+    5. dispatch a 1-line health-check turn to verify the endpoint
+       actually answers
+
+────────────────────────────────────────────────────────
+COMMON MISTAKES
+────────────────────────────────────────────────────────
+  ✗ entry key starts with "_"      → skipped as placeholder
+  ✗ actor is the model name        → must be exactly "codex" or "claude"
+  ✗ cli_arg is your nickname       → must be the model id the API expects
+  ✗ base_url has trailing slash    → drop it
+  ✗ values still contain
+    "REPLACE_WITH:*" prefixes      → fill them in or delete the entry
+
+────────────────────────────────────────────────────────
+USEFUL COMMANDS (any time)
+────────────────────────────────────────────────────────
+  scripts/backend.sh show          inspect import status (key redacted)
+  scripts/backend.sh apply         re-write env files after edits
+  scripts/backend.sh help-import   print this walkthrough again
+  scripts/backend.sh clear codex   un-import an actor
+
+──────────────────────────────────────────────────────────────────────
+EOF
+}
 
 _models_file() {
   local f="${SKILL_DIR}/models.json"
@@ -140,17 +267,12 @@ case "$cmd" in
     fi
     cp "$src" "$dst"
     chmod 600 "$dst"
-    echo "wrote $dst (chmod 600 — keeps api_keys readable only by you)"
-    echo
-    echo "Next steps:"
-    echo "  1. Open $dst in your editor"
-    echo "  2. Replace the \`_template\` entry under \`models\` (or add a new key) with"
-    echo "     an entry containing actor + cli_arg + endpoint.{base_url,api_key}."
-    echo "     For Claude on a shim (DeepSeek-compat etc.) also set"
-    echo "     endpoint.{opus,sonnet,haiku}_model."
-    echo "  3. Set \`active.codex\` and/or \`active.claude\` to your new model id."
-    echo "  4. Tell the chat parent — it will WebSearch + fill capability metadata,"
-    echo "     update role_defaults, and run \`$0 apply\`."
+    echo "✓ wrote $dst (chmod 600)"
+    _print_import_walkthrough
+    ;;
+
+  help-import|help)
+    _print_import_walkthrough
     ;;
 
   show)
@@ -162,6 +284,31 @@ case "$cmd" in
       _show_local codex
       echo
       _show_local claude
+      # First-time-user hint: surfaced when models.json has no real entries
+      # (i.e. user is still on the shipped catalog with the _template
+      # placeholder unedited and no codex/claude entry credentialed).
+      mf="$(_models_file)"
+      if python3 -c "
+import json, sys
+d = json.load(open('$mf'))
+real = [
+  k for k, m in (d.get('models') or {}).items()
+  if not k.startswith('_')
+  and isinstance(m, dict)
+  and (m.get('endpoint') or {}).get('api_key', '').strip()
+  and not (m.get('endpoint') or {}).get('api_key', '').startswith('REPLACE_WITH')
+]
+sys.exit(0 if not real else 1)
+" 2>/dev/null; then
+        cat <<'HINT'
+
+────────────────────────────────────────────────────────
+  No imported models yet. Run:
+    scripts/backend.sh help-import
+  for a step-by-step walkthrough on how to add one.
+────────────────────────────────────────────────────────
+HINT
+      fi
     fi
     ;;
 
