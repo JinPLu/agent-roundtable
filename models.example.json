@@ -13,14 +13,24 @@
     "Three classes of entries are shipped below:",
     "  A. cursor-* entries — auth via Cursor IDE, no key required, ready to dispatch.",
     "  B. BYOK pre-researched entries (gpt-5.5, gpt-5.3-codex, claude-4.7-opus,",
-    "     claude-4.6-sonnet) — capability/pricing already filled from upstream docs.",
-    "     You only need to drop in your api_key (and optionally swap base_url for a proxy).",
+    "     claude-4.6-sonnet) — capabilities (context window, benchmarks, cli_arg) filled",
+    "     from upstream docs. You drop in your api_key. Pricing carries an _as_of date;",
+    "     see PRICING FRESHNESS below.",
     "  C. _template — generic placeholder for any other endpoint (custom proxy, vLLM, …).",
     "     Rename the key (entries starting with `_` are skipped by `apply`).",
     "",
-    "If you set a base_url on a BYOK entry pointing to a discount proxy (cialloapi, openrouter,",
-    "etc.), the chat parent will WebSearch for the proxy's actual pricing and update `pricing`",
-    "before applying.",
+    "PRICING FRESHNESS CONTRACT:",
+    "  Capability fields (context_window_k, benchmarks, cli_arg) are stable post-release.",
+    "  Prices are NOT — vendors adjust list rates, proxies re-mark, plan tiers shift,",
+    "  contracts negotiate. The shipped pricing is a SNAPSHOT, not authoritative.",
+    "",
+    "  Every `pricing` block carries `_as_of` (YYYY-MM-DD). Convention for the chat parent:",
+    "    - if pricing is null OR `_as_of` is missing  → WebSearch and fill before dispatch.",
+    "    - if `_as_of` is older than 30 days          → WebSearch and refresh, or ask user.",
+    "    - if user pinned a price with `_pinned: true` → never auto-refresh.",
+    "    - if `endpoint.base_url` points to a proxy   → ALWAYS re-research (proxy pricing",
+    "      diverges 10-100x from vendor list, e.g. cialloapi GPT-5.5 is ~70x cheaper).",
+    "  Or simply: ask the user to provide current pricing for cost-sensitive routing.",
     "",
     "The api_key never enters chat or agent context — it is read by the python subprocess",
     "inside `apply` and written via `printf %q` to the env file. `backend.sh show` redacts",
@@ -41,7 +51,6 @@
         "_claude_shim_doc": "If actor=claude on an Anthropic-compat shim, also set opus_model, sonnet_model, haiku_model, and (optional) claude_effort_level."
       }
     },
-
     "gpt-5.5": {
       "_status": "Pre-researched OpenAI direct. Fill endpoint.api_key with your sk-... key. Swap base_url to a discount proxy (cialloapi, openrouter, …) if you don't have direct OpenAI access — the agent will re-research proxy pricing before apply.",
       "actor": "codex",
@@ -62,6 +71,8 @@
         "OpenAI-side reviewer / planner vs Claude"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
+        "_status": "Snapshot from vendor list price; if you use a proxy or have negotiated rates this is wrong. Set _pinned: true after manual fill, otherwise the chat parent will re-research before dispatch.",
         "per_1m_input": 5.0,
         "per_1m_cached_input": 0.5,
         "per_1m_output": 30.0,
@@ -72,7 +83,6 @@
         "api_key": "REPLACE_WITH:sk-..."
       }
     },
-
     "gpt-5.3-codex": {
       "_status": "Pre-researched OpenAI direct. Codex-tuned variant — cheaper and explicitly optimized for terminal/agent tasks.",
       "actor": "codex",
@@ -91,6 +101,8 @@
         "cheaper OpenAI-side executor"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
+        "_status": "Snapshot from vendor list price; if you use a proxy or have negotiated rates this is wrong. Set _pinned: true after manual fill, otherwise the chat parent will re-research before dispatch.",
         "per_1m_input": 1.75,
         "per_1m_cached_input": 0.175,
         "per_1m_output": 14.0,
@@ -101,7 +113,6 @@
         "api_key": "REPLACE_WITH:sk-..."
       }
     },
-
     "claude-4.7-opus": {
       "_status": "Pre-researched Anthropic direct. Anthropic Apr 2026 flagship. Fill endpoint.api_key. For an Anthropic-compat shim (DeepSeek-compat, Bedrock-compat) swap base_url and add opus_model/sonnet_model/haiku_model/claude_effort_level.",
       "actor": "claude",
@@ -124,6 +135,8 @@
         "vision-heavy tasks (3.3x resolution vs 4.6)"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
+        "_status": "Snapshot from vendor list price; if you use a proxy or have negotiated rates this is wrong. Set _pinned: true after manual fill, otherwise the chat parent will re-research before dispatch.",
         "per_1m_input": 5.0,
         "per_1m_cached_input": 0.5,
         "per_1m_output": 25.0,
@@ -138,7 +151,6 @@
         "claude_effort_level": "high"
       }
     },
-
     "claude-4.6-sonnet": {
       "_status": "Pre-researched Anthropic direct. Workhorse Sonnet — Opus-tier on many tasks at Sonnet pricing. Fill endpoint.api_key.",
       "actor": "claude",
@@ -158,6 +170,8 @@
         "computer-use tasks"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
+        "_status": "Snapshot from vendor list price; if you use a proxy or have negotiated rates this is wrong. Set _pinned: true after manual fill, otherwise the chat parent will re-research before dispatch.",
         "per_1m_input": 3.0,
         "per_1m_cached_input": 0.3,
         "per_1m_output": 15.0,
@@ -172,7 +186,6 @@
         "claude_effort_level": "medium"
       }
     },
-
     "cursor-composer-2": {
       "actor": "cursor-subagent",
       "cli_arg": "composer-2-fast",
@@ -192,13 +205,13 @@
         "default Cursor agentic loop"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
         "per_1m_input": 0.5,
         "per_1m_cached_input": 0.2,
         "per_1m_output": 2.5,
         "source": "https://cursor.com/docs/models-and-pricing"
       }
     },
-
     "cursor-claude-4.7-opus": {
       "actor": "cursor-subagent",
       "cli_arg": "claude-opus-4-7-thinking-high",
@@ -221,13 +234,13 @@
         "vision-heavy tasks"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
         "per_1m_input": 5.0,
         "per_1m_cached_input": 0.5,
         "per_1m_output": 25.0,
         "source": "https://cursor.com/docs/models-and-pricing"
       }
     },
-
     "cursor-claude-4.6-sonnet": {
       "actor": "cursor-subagent",
       "cli_arg": "claude-4.6-sonnet-medium-thinking",
@@ -247,13 +260,13 @@
         "computer-use tasks"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
         "per_1m_input": 3.0,
         "per_1m_cached_input": 0.3,
         "per_1m_output": 15.0,
         "source": "https://cursor.com/docs/models-and-pricing"
       }
     },
-
     "cursor-gemini-3.1-pro": {
       "actor": "cursor-subagent",
       "cli_arg": "gemini-3.1-pro",
@@ -279,6 +292,7 @@
         "max output 64K (half of Claude/GPT-5)"
       ],
       "pricing": {
+        "_as_of": "2026-05-09",
         "per_1m_input": 2.0,
         "per_1m_cached_input": 0.2,
         "per_1m_output": 12.0,
@@ -287,13 +301,34 @@
     }
   },
   "role_defaults": {
-    "triage":              ["cursor-composer-2"],
-    "discussant":          ["cursor-composer-2", "cursor-claude-4.6-sonnet"],
-    "planner":             ["cursor-claude-4.7-opus", "cursor-gemini-3.1-pro"],
-    "executor":            ["cursor-composer-2", "cursor-claude-4.6-sonnet"],
-    "executor-heavy":      ["cursor-claude-4.7-opus"],
-    "reviewer":            ["cursor-claude-4.7-opus", "cursor-gemini-3.1-pro"],
-    "reviewer-aggregator": ["cursor-gemini-3.1-pro", "cursor-claude-4.7-opus"],
-    "compactor":           ["cursor-composer-2"]
+    "triage": [
+      "cursor-composer-2"
+    ],
+    "discussant": [
+      "cursor-composer-2",
+      "cursor-claude-4.6-sonnet"
+    ],
+    "planner": [
+      "cursor-claude-4.7-opus",
+      "cursor-gemini-3.1-pro"
+    ],
+    "executor": [
+      "cursor-composer-2",
+      "cursor-claude-4.6-sonnet"
+    ],
+    "executor-heavy": [
+      "cursor-claude-4.7-opus"
+    ],
+    "reviewer": [
+      "cursor-claude-4.7-opus",
+      "cursor-gemini-3.1-pro"
+    ],
+    "reviewer-aggregator": [
+      "cursor-gemini-3.1-pro",
+      "cursor-claude-4.7-opus"
+    ],
+    "compactor": [
+      "cursor-composer-2"
+    ]
   }
 }

@@ -29,14 +29,17 @@ Options:
   --addendum TEXT       Extra instructions appended to the prompt.
   --addendum-file FILE  File whose contents are appended to the prompt.
   --timeout-s SECONDS   Hard wallclock cap for claude; on timeout the run is
-                        killed and the turn is marked exit=124 (default: 600).
+                        killed and the turn is marked exit=124 (default: 1500).
+                        DeepSeek-compat shims have wide tail latency — observed
+                        successful reviewer turns up to 1017s. Bump higher if
+                        you hit exit=124 with empty last.json.
   -h, --help            Print this help and exit.
 
 Environment:
   ROUNDTABLE_REPO_ROOT  Repo root (default: auto-detected via git).
   ROUNDTABLE_ROOT       Artifacts root (default: $ROUNDTABLE_REPO_ROOT/.roundtable).
   ROUNDTABLE_TAIL_K     Recent turns inlined into prompts (default: 3).
-  ROUNDTABLE_TIMEOUT_S  Default for --timeout-s (default: 600).
+  ROUNDTABLE_TIMEOUT_S  Default for --timeout-s (default: 1500).
 EOF
 }
 
@@ -48,7 +51,7 @@ done
 slug="${1:?missing thread slug}"; shift
 role=""; model=""; effort="high"; perm=""; bare=0
 worktree=""; addendum=""; addendum_file=""; allowed_tools_override=""
-timeout_s="${ROUNDTABLE_TIMEOUT_S:-600}"
+timeout_s="${ROUNDTABLE_TIMEOUT_S:-1500}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) role="$2"; shift 2;;

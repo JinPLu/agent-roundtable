@@ -147,6 +147,8 @@ Codex non-executor roles set `cwd=<thread-dir>` so `-s workspace-write` allows w
 
 1. **codex `-o last.md` doesn't always flush.** Auto-salvaged from `trace.jsonl`.
 2. **Exit 0 ≠ task succeeded.** Always read `last.md`.
+3. **Anthropic-compat shims have wide tail latency.** DeepSeek-V4-Pro via `api.deepseek.com/anthropic` has been observed at 1017s on heavy reviewer prompts. `claude_turn.sh` defaults `--timeout-s=1500` to cover this; bump to 2400 for very large turns. Symptoms of timeout: `meta.json` shows `exit_code=124`, `last.json` and `stderr.log` are empty. Wrappers may surface this as "execution backend unavailable" — re-check with a 1-line probe (`curl … /v1/messages`) before declaring the endpoint dead. Per-model `latency_warning` strings in `models.json` capture known offenders.
+4. **Pricing snapshots go stale.** Capability fields (context window, benchmarks, cli_arg) are stable post-release; `pricing.per_1m_*` is not. Every shipped `pricing` block carries `_as_of`. Before any cost-aware routing decision, the chat parent re-researches via WebSearch (or asks the user) when `_as_of` is missing/stale or `endpoint.base_url` is a discount proxy. User can pin a price with `_pinned: true` to opt out of auto-refresh. See `models.example.json._readme`.
 
 ## Quick reference
 
