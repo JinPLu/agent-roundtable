@@ -64,26 +64,32 @@ models = (data.get("models") or {})
 # ── Header ────────────────────────────────────────────────────────────────
 suffix = "" if p.name == "models.json" else f"  (fallback: {p.name})"
 print(f"=== Actor import status{suffix} ===")
+def _is_placeholder(v):
+    return isinstance(v, str) and v.startswith("REPLACE_WITH")
+
 for actor in ("codex", "claude"):
     mid = active.get(actor)
     if not mid:
         print(f"  {actor:<7}  ❌ NOT IMPORTED   active.{actor} is null — CLI will use its own login")
+        continue
+    if mid.startswith("_"):
+        print(f"  {actor:<7}  ⚠  PLACEHOLDER    active.{actor}={mid!r} — rename this entry to a real model id")
         continue
     m = models.get(mid)
     if not m:
         print(f"  {actor:<7}  ⚠  BROKEN         active.{actor}={mid!r} but no such entry in `models`")
         continue
     ep = m.get("endpoint") or {}
-    has_base, has_key = bool(ep.get("base_url")), bool(ep.get("api_key"))
+    base, key = ep.get("base_url", ""), ep.get("api_key", "")
     cli = m.get("cli_arg", mid)
-    base = ep.get("base_url", "")
-    if has_base and has_key:
+    if _is_placeholder(base) or _is_placeholder(key) or _is_placeholder(m.get("actor", "")):
+        print(f"  {actor:<7}  ⚠  PLACEHOLDER    model={mid!r} still has REPLACE_WITH:* fields — fill them in")
+        continue
+    if base and key:
         print(f"  {actor:<7}  ✅ IMPORTED       model={mid!r}  cli_arg={cli!r}")
         print(f"           {'':<17}base_url={base}")
     else:
-        missing = []
-        if not has_base: missing.append("base_url")
-        if not has_key:  missing.append("api_key")
+        missing = [k for k, v in (("base_url", base), ("api_key", key)) if not v]
         print(f"  {actor:<7}  ⚠  INCOMPLETE     model={mid!r} — endpoint missing: {','.join(missing) or 'whole block'}")
 
 # ── Catalog table ────────────────────────────────────────────────────────
@@ -96,11 +102,16 @@ else:
     for mid, m in models.items():
         actor = m.get("actor", "?")
         cli   = m.get("cli_arg", mid)
-        if actor == "cursor-subagent":
+        if mid.startswith("_") or _is_placeholder(actor):
+            ep_status = "⚠ PLACEHOLDER (fill in or delete)"
+        elif actor == "cursor-subagent":
             ep_status = "via Cursor IDE"
         else:
             ep = m.get("endpoint") or {}
-            if ep.get("base_url") and ep.get("api_key"):
+            base, key = ep.get("base_url", ""), ep.get("api_key", "")
+            if _is_placeholder(base) or _is_placeholder(key):
+                ep_status = "⚠ PLACEHOLDER (fill in)"
+            elif base and key:
                 ep_status = "endpoint set"
             elif ep:
                 ep_status = "endpoint partial"
@@ -133,10 +144,13 @@ case "$cmd" in
     echo
     echo "Next steps:"
     echo "  1. Open $dst in your editor"
-    echo "  2. Find or add the model entry you'll use, add an \`endpoint\` block:"
-    echo '       "endpoint": { "base_url": "https://...", "api_key": "sk-..." }'
-    echo "  3. Set \`active.codex\` / \`active.claude\` to the model id"
-    echo "  4. Save, then run: $0 apply"
+    echo "  2. Replace the \`_template\` entry under \`models\` (or add a new key) with"
+    echo "     an entry containing actor + cli_arg + endpoint.{base_url,api_key}."
+    echo "     For Claude on a shim (DeepSeek-compat etc.) also set"
+    echo "     endpoint.{opus,sonnet,haiku}_model."
+    echo "  3. Set \`active.codex\` and/or \`active.claude\` to your new model id."
+    echo "  4. Tell the chat parent — it will WebSearch + fill capability metadata,"
+    echo "     update role_defaults, and run \`$0 apply\`."
     ;;
 
   show)
@@ -175,14 +189,20 @@ for actor in targets:
     mid = active.get(actor)
     if not mid:
         print(f"SKIP {actor}: active.{actor} is null in models.json", file=sys.stderr); continue
+    if mid.startswith("_"):
+        print(f"SKIP {actor}: active.{actor}={mid!r} is a placeholder (keys starting with _ are skipped). Replace _template with a real model id.", file=sys.stderr); continue
     m = models.get(mid)
     if not m:
         print(f"ERROR {actor}: active.{actor} = {mid!r} but no such entry in models block", file=sys.stderr); sys.exit(2)
-    declared_actor = m.get("actor")
+    declared_actor = m.get("actor", "")
+    if declared_actor.startswith("REPLACE_WITH"):
+        print(f"SKIP {actor}: model {mid!r} still has placeholder values (actor={declared_actor!r}). Fill in actor/cli_arg/endpoint first.", file=sys.stderr); continue
     if declared_actor and declared_actor != actor:
         print(f"WARN  {actor}: model {mid!r} is registered as actor={declared_actor!r}", file=sys.stderr)
     ep = m.get("endpoint") or {}
-    base, key = ep.get("base_url"), ep.get("api_key")
+    base, key = ep.get("base_url", ""), ep.get("api_key", "")
+    if base.startswith("REPLACE_WITH") or key.startswith("REPLACE_WITH"):
+        print(f"SKIP {actor}: model {mid!r} endpoint still has REPLACE_WITH:* placeholder values.", file=sys.stderr); continue
     if not base or not key:
         print(f"SKIP {actor}: model {mid!r} has no endpoint.base_url or api_key set", file=sys.stderr); continue
     cli_arg = m.get("cli_arg", mid)

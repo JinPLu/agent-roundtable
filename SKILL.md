@@ -10,28 +10,36 @@ A thin file-based substrate where participants take turns around a shared on-dis
 
 ## First-run setup (default flow when this skill is invoked)
 
-> **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as "not configured" and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
+> **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as ❌ NOT IMPORTED and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
 
-The wizard is **single-file**: everything (catalog + endpoints + active selection) lives in `<SKILL_DIR>/models.json` (gitignored, chmod 600). The user owns that file; the agent reads only the non-secret parts (model ids, providers, base URLs, capability metadata) and never reads or echoes `endpoint.api_key`.
+The contract is **the user fills 4 fields per model; the agent fills the rest.** Everything lives in `<SKILL_DIR>/models.json` (gitignored, chmod 600).
 
-Step-by-step (the agent runs every step except #2):
+Step-by-step:
 
-1. **Probe + initialise**: run `scripts/backend.sh show`. If `models.json` doesn't exist or `active.{codex,claude}` are both null, run `scripts/backend.sh init` to seed `<SKILL_DIR>/models.json` from `models.example.json` (chmod 600). The example ships a catalog of model entries (gpt-5.5, claude-opus, …) — most users will replace or extend it; that's expected.
+1. **Init + show** (agent): `scripts/backend.sh init && scripts/backend.sh show`. `init` copies `models.example.json` to `models.json` (idempotent, chmod 600). The shipped example contains one `_template` placeholder under `models` plus four pre-filled `cursor-subagent` entries that need no endpoint.
 
-2. **User edits `models.json`**: tell the user to open `<SKILL_DIR>/models.json` and:
-   - Either pick an existing catalog entry that matches a model they have, or add a new one under `models.<id>`. Minimum required fields per entry: `actor` (`codex` or `claude`), `cli_arg` (the model id the CLI sends), and `endpoint: { base_url, api_key }`.
-   - Set `active.codex` and/or `active.claude` to the chosen model ids. Leave either null to skip that actor (its CLI then falls back to its own login).
-   - Save and reply with anything (`done`, `go`, etc.).
+2. **User fills 4 fields per model** (user, in editor): open `<SKILL_DIR>/models.json` and for each model with credentials, replace the `_template` entry (or add a new key) with:
+   ```json
+   "gpt-5": {                                      // ← any id you want (must NOT start with _)
+     "actor":   "codex",                           // codex (OpenAI-compat) or claude (Anthropic-compat)
+     "cli_arg": "gpt-5",                           // exact model id the API expects
+     "endpoint": {
+       "base_url": "https://api.openai.com/v1",
+       "api_key":  "sk-..."
+     }
+   }
+   ```
+   For Claude on a shim (DeepSeek-compat etc.) also add `endpoint.{opus,sonnet,haiku}_model` and (optional) `endpoint.claude_effort_level`. Then set `active.codex` and/or `active.claude` to the model id. Save and reply `done`.
 
-3. **Inspect (non-secret)**: `scripts/backend.sh show` — reports per actor: `active.{actor}=<model id>`, `cli_arg`, and a status (`ready` / `base_url only` / `api_key only` / `no endpoint block`). The api_key is never printed; only its presence is. The agent uses this output to decide which models to research.
+3. **Inspect non-secret state** (agent): `scripts/backend.sh show` prints a two-section summary — per-actor import status (✅ IMPORTED / ❌ NOT IMPORTED / ⚠ PLACEHOLDER / ⚠ INCOMPLETE) and a catalog table marking active rows with ★. The api_key is never printed; only its presence is.
 
-4. **Research capabilities**: call `WebSearch` with each active model id + provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: `context_window_k`, `max_output_k`, `benchmarks` (SWE-Bench Verified, Terminal-Bench, etc.), `pricing` (per-1M input/output), `best_for` tags, `underlying` (human-readable description). If WebSearch returns nothing reliable, ask the user for a docs URL and `WebFetch` it. Patch those fields directly into the matching `models.<id>` entry in `models.json` (preserve `endpoint`, `actor`, `cli_arg`). Also append the model id to whichever `role_defaults` lists make sense (`executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
+4. **Research + auto-fill metadata** (agent): for each entry that the user just added (i.e. has an `endpoint` block but lacks `underlying` / `context_window_k` / `max_output_k` / `benchmarks` / `best_for` / `pricing`), call `WebSearch` with the model id + provider — e.g. `"gpt-5 OpenAI context window benchmark pricing 2026"`. Patch the discovered values back into the same `models.<id>` entry, preserving `actor`, `cli_arg`, `endpoint`. If WebSearch returns nothing reliable, ask the user for a docs URL and `WebFetch` it. Then add the model id to the appropriate `role_defaults` lists (typically `executor` + `reviewer` for top-tier, `compactor` + `triage` for cheap models).
 
-5. **Apply**: `scripts/backend.sh apply` — reads `models.json`, walks `active.{codex,claude}`, and writes `.codex_env.local` / `.claude_env.local` (chmod 600) using each active model's `endpoint` block. Prints `APPLIED actor=… model=… base_url=…` lines so the agent has a non-secret record. The api_key is read from `models.json` by the python subprocess inside `apply` and passed to the env file via `printf %q` — it is never echoed to stdout. (For ad-hoc one-off overrides, `backend.sh codex <url> <key> <model>` and `backend.sh claude <url> <key> <model>` still work and bypass `models.json`.)
+5. **Apply** (agent): `scripts/backend.sh apply` reads `models.json`, walks `active.{codex,claude}`, and writes `.codex_env.local` / `.claude_env.local` (chmod 600). The api_key is read by a python subprocess inside `apply` and written via `printf %q` — never echoed to stdout. `apply` automatically skips any entry whose key starts with `_` or whose values still contain `REPLACE_WITH:*` placeholders.
 
-6. **Verify**: `scripts/backend.sh show` (key redacted in both `models.json` summary and `.local` dumps); then dispatch a 1-line health-check turn per active actor — e.g. `scripts/codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`. Exit 0 with the word `ok` in `last.md` confirms the endpoint actually answers.
+6. **Verify** (agent): `scripts/backend.sh show` to confirm ✅ IMPORTED with the right model id, then dispatch a 1-line health-check per active actor — e.g. `scripts/codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`. Exit 0 + `ok` in `last.md` confirms the endpoint actually answers.
 
-The flow is idempotent — re-running `init` is a no-op once `models.json` exists; re-running `apply` overwrites the `.local` files. Editing `models.json` by hand any time (new endpoints, swap active model, tweak benchmarks) and re-running `apply` is the standard switching motion. The catalog grows over time — users with more models just keep adding entries.
+Re-running `init` is a no-op once `models.json` exists. Re-running `apply` overwrites the `.local` files. Editing `models.json` by hand to add/swap/tweak entries and re-running `apply` is the standard switching motion. For ad-hoc overrides without touching the registry: `scripts/backend.sh codex <url> <key> <model>` / `scripts/backend.sh claude <url> <key> <opus> [sonnet] [haiku] [effort]` writes the `.local` file directly.
 
 ## Architecture — who does what
 
