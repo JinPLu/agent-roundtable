@@ -70,6 +70,10 @@ Any participant can play any role — planner, executor, reviewer, discussant. T
   ```
   Useful for ad-hoc overrides without touching `models.json`.
 - **Catalog vs. registry**: `models.example.json` is the shipped catalog (tracked in git). `models.json` is the user's working copy (gitignored, holds keys). `route.sh` and `_common.sh resolve_model` read whichever exists, falling back to the example, so signal-based routing keeps working even before `init`.
+- **CLI env-var contract** (what `backend.sh apply` writes, matching official CLI docs):
+  - `.codex_env.local` → `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_DEFAULT_MODEL`. Codex CLI honors these for any OpenAI-compatible endpoint (model also overridable via `--model` / `-c model='"…"'`). See [developers.openai.com/codex/config-reference](https://developers.openai.com/codex/config-reference).
+  - `.claude_env.local` → `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, plus `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` and `CLAUDE_CODE_{SUBAGENT_MODEL,EFFORT_LEVEL}` when the registry sets them. Claude Code CLI maps each model alias (`claude --model opus|sonnet|haiku`) to the corresponding default, so a single shim endpoint can serve all three roles. See [code.claude.com/docs/en/env-vars](https://code.claude.com/docs/en/env-vars).
+  - The api_key is written via a python subprocess that reads `models.json` directly and emits `printf %q`-quoted assignments — never echoed to stdout, never enters chat or the agent's context.
 
 ## Thread layout
 
