@@ -104,6 +104,32 @@ emit_repo_context() {
   [[ -f "${ROUNDTABLE_REPO_ROOT}/AGENTS.md" ]] && printf -- '- AGENTS.md: `%s/AGENTS.md`\n' "$ROUNDTABLE_REPO_ROOT"
   [[ -d "${ROUNDTABLE_REPO_ROOT}/.cursor/rules" ]] && printf -- '- rules: `%s/.cursor/rules/`\n' "$ROUNDTABLE_REPO_ROOT"
   printf '\n'
+
+  # ── Project root (optional) ─────────────────────────────────────────────────
+  # Set ROUNDTABLE_PROJECT_ROOT=/path/to/your/project so agents see the actual
+  # project files (e.g. .planning/, AGENTS.md, .cursor/rules/) in their prompt.
+  local proj="${ROUNDTABLE_PROJECT_ROOT:-}"
+  if [[ -n "$proj" ]]; then
+    printf '## Project context (`ROUNDTABLE_PROJECT_ROOT`)\n'
+    printf -- '- project root: `%s`\n' "$proj"
+    [[ -f "${proj}/AGENTS.md" ]] && printf -- '- AGENTS.md: `%s/AGENTS.md`\n' "$proj"
+    [[ -d "${proj}/.cursor/rules" ]] && printf -- '- rules: `%s/.cursor/rules/`\n' "$proj"
+    if [[ -d "${proj}/.planning" ]]; then
+      printf -- '- planning dir: `%s/.planning/`\n' "$proj"
+      # List key planning files so agents know what to read
+      local pf
+      for pf in STATE.json DASHBOARD.md NARRATIVE.md paper/NARRATIVE.md \
+                 paper/STATUS_REPORT_*.md runbooks/WORK_ORDERS.md \
+                 runbooks/DPO_EXECUTION_PLAN_*.md; do
+        local full="${proj}/.planning/${pf}"
+        # glob expansion for wildcards
+        for match in ${full}; do
+          [[ -f "$match" ]] && printf -- '  - `%s`\n' "$match"
+        done
+      done
+    fi
+    printf '\n'
+  fi
 }
 
 # Per-turn unique history dir suffix; combines second-precision UTC ts with

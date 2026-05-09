@@ -186,7 +186,7 @@ Every turn appended to `THREAD.md` MUST be exactly:
 
 ### Env vars and catalog
 
-**Env vars:** `ROUNDTABLE_REPO_ROOT` (auto-detected git root) · `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`) · `ROUNDTABLE_TAIL_K` (recent turns inlined; default `3`) · `ROUNDTABLE_TIMEOUT_S` (default `--timeout-s`; codex `1800`, claude `1500`).
+**Env vars:** `ROUNDTABLE_REPO_ROOT` (auto-detected git root) · `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`) · `ROUNDTABLE_TAIL_K` (recent turns inlined; default `3`) · `ROUNDTABLE_TIMEOUT_S` (default `--timeout-s`; codex `1800`, claude `1500`) · **`ROUNDTABLE_PROJECT_ROOT`** (path to your actual project repo; when set, each agent prompt automatically lists `.planning/` key files — `STATE.json`, `DASHBOARD.md`, `NARRATIVE.md`, work orders — so agents know where to read canonical project state; **required if your project lives outside the roundtable git root**).
 
 **Catalog vs. registry:** `models.example.json` is the shipped catalog (tracked in git). `models.json` is the user's working copy (gitignored). `route.sh` and `_common.sh resolve_model` fall back to the example, so routing works before `init`.
 
