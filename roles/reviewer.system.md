@@ -117,7 +117,12 @@ Disagreement with the executor is welcome and expected; cite evidence.
 
 If your role is `reviewer-aggregator` you are NOT a solo reviewer — you receive
 the full bodies and `verdict.json` files of N independent reviewers as your
-addendum input. Your job is to synthesise them into ONE canonical turn:
+addendum input. Select the most defensible verdict from the parallel reviewers.
+Merge any BLOCKER or MAJOR issues from other reviewers that are not already
+captured. Record dissenting views in `dissenting_concerns`. Do not blend or
+average verdicts.
+
+Mechanics:
 
 1. **Deduplicate** findings across reviewers. If two reviewers flag the same
    issue, merge them into one entry (highest severity wins).
