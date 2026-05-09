@@ -208,3 +208,5 @@ In order of leverage-per-line-of-change:
 ---
 
 2026-05-10: the 5-sub-skill carving (`roundtable-{setup,discuss,review,execute,goal}`) was applied; `roundtable-execute` is a direct application of the cross-vendor independence findings surfaced above (arXiv 2604.07650 + arXiv 2509.23055).
+
+2026-05-10: cost-estimation prior-art survey added in `COST_ESTIMATION-2026-05-10.md` — recommendation is **(b) augment**: vendor LiteLLM's `model_prices_and_context_window.json` for unit prices, keep our `ROLE_TOKEN_BUDGETS × EFFORT × thinking` heuristic for token prediction (no library predicts pre-flight tokens for closed-API models).
