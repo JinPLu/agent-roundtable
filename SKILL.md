@@ -73,7 +73,7 @@ Model selection is a judgment call, not a lookup. Apply these principles:
 
 - **Benchmark scores are one signal.** Real task fitness depends on domain, output length, and reasoning style. `route.sh --role ROLE` prints ranked suggestions from `models.json` `role_defaults` — treat as starting points, not decisions.
 - **Cross-vendor diversity reduces shared blind spots.** Anthropic-family, OpenAI-family, and Google-family have different training emphases. Prefer mixing families for reviewer fan-out.
-- **Cheap companion alongside expensive dispatches.** When dispatching a mid/expensive model, ask if a cheap cross-vendor model would catch the same issues. If yes, dispatch both in parallel — disagreement is a quality signal. The companion always uses `--blind`.
+- **Cheap companion alongside expensive dispatches.** When dispatching an expensive model (mid-tier or above), always dispatch a cheap cross-vendor companion in parallel for the same role. The companion uses `--blind`. Disagreement between the two is a quality signal — surface it to the user; do not silently discard it.
 - **Default cheap for fan-out; reserve expensive for aggregation.** `codex-gpt-5` and `claude-opus` are quality-competitive with mid-tier for most executor/reviewer tasks.
 - **Re-research pricing before cost-aware decisions.** Proxy endpoints change rates frequently; `models.json` pricing carries `_as_of` dates. Re-research via `WebSearch` when stale or from a proxy.
 
@@ -103,8 +103,8 @@ Skip confirmation only in a pre-agreed convergence loop or explicit "dispatch no
 
 When the user requests high quality or the goal is complex, run the four-phase loop:
 
-1. **Plan** — single planner (cheapest capable; `codex-gpt-5` default). Optional: dispatch a reviewer on the plan as a plan-critic (different actor from planner); planner re-runs at most once.
-2. **Execute** — single executor (cheapest capable; `codex-gpt-5` default).
+1. **Plan** — single planner (cheapest capable). When the chosen model is mid-tier or above, dispatch a cheap cross-vendor companion in parallel using `--blind`. Optional: dispatch a reviewer on the plan as a plan-critic (different actor from planner); planner re-runs at most once.
+2. **Execute** — single executor (cheapest capable). When the chosen model is mid-tier or above, dispatch a cheap cross-vendor companion in parallel using `--blind`.
 3. **Review** — 2 or 3 parallel reviewers from **different** actors (never 4+). All parallel reviewers MUST use `--blind`. At least one MUST use `--role devils-advocate`. Each produces a structured JSON verdict independently.
 4. **Aggregate** — high-capability model (default `cursor-claude-4.7-opus`) **selects** the most defensible verdict, merges BLOCKER/MAJOR issues from other reviewers, records dissent in `dissenting_concerns`. Never blend or average verdicts. Runs **without** `--blind`.
 

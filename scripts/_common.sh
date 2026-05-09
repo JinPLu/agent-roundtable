@@ -197,8 +197,9 @@ build_prompt() {
   {
     # ── 1. STABLE PREFIX ────────────────────────────────────────────────────
     printf '# Roundtable conventions\n\n'
-    printf 'Multi-agent thread — single source of truth is `THREAD.md` on disk. '
-    printf 'Each turn appends one `## Turn N` block; do not re-derive facts from memory.\n\n'
+    printf 'Multi-agent thread. Ground truth is the repository and GOAL.md — read\n'
+    printf 'source files and run commands to verify facts. THREAD.md is a turn log\n'
+    printf '(context), not evidence; do not trust prior agents'\''s summaries at face value.\n\n'
 
     # Auto-skip when role system prompt exists (it already includes the format spec).
     local _skip_disc="${ROUNDTABLE_SKIP_DISCIPLINE:-0}"
