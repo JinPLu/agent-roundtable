@@ -111,6 +111,14 @@ For complex goals, run this four-phase loop:
 
 ---
 
+## Tool policy — minimal disablement
+
+Agent CLIs run with their **full tool surface** (Read, Write, Bash, WebSearch, WebFetch, …) by default. Restrictions are only applied when necessary:
+
+- **Reviewer / aggregator / devils-advocate**: write protection comes from `--permission-mode plan`. No tool allowlist — diagnostic tools (WebSearch, WebFetch, Bash) stay available.
+- **Executor / planner / discussant**: only destructive git operations are blocked (`push`, `rebase`, `reset --hard`, `fetch`, `remote`, `config`).
+- **Web search**: Claude Code's native `WebSearch` / `WebFetch` are enabled out of the box. Codex CLI's `browser_use` and `in_app_browser` features are stable+enabled; for explicit search add an MCP server (`codex mcp add ddg -- uvx duckduckgo-mcp-server` or similar).
+
 ## Hard rules
 
 > Violating any rule is a protocol failure.

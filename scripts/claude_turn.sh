@@ -149,17 +149,21 @@ _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --a
 [[ -f "$role_sys" ]] && _args+=( --append-system-prompt "$(cat "$role_sys")" )
 [[ "$bare" -eq 1 ]] && _args+=( --bare )
 
-# Per-role tool surface. When user provides --allowed-tools override, they take
-# full responsibility for the tool surface — no role-default --disallowedTools.
+# Per-role tool surface — minimal disablement principle.
+# Reviewer roles: write-protection comes from --permission-mode plan (set above);
+#   all other tools (WebSearch, WebFetch, Bash, Read, …) stay enabled so the
+#   agent has full diagnostic capability.
+# Executor / planner / discussant: only destructive git operations are blocked.
+# When user provides --allowed-tools override, they take full responsibility.
 _tools=()
 if [[ -n "${allowed_tools_override:-}" ]]; then
   _tools+=( --allowedTools "$allowed_tools_override" )
 else
   case "$role" in
-    reviewer|reviewer-aggregator)
-      _tools+=( --allowedTools "Read Glob Grep Bash(rg *) Bash(git diff:*) Bash(git log:*) Bash(pytest --collect-only) Bash(ruff check *) Bash(mypy *)" --disallowedTools "WebSearch WebFetch" );;
+    reviewer|reviewer-aggregator|devils-advocate)
+      : ;;  # plan mode + role prompt enforce read-only intent; no allowlist needed.
     *)
-      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git fetch:*) Bash(git fetch) Bash(git remote:*) Bash(git config:*) Bash(git filter-branch:*) Bash(git update-ref:*) Bash(git checkout origin/*) WebSearch WebFetch" );;
+      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git fetch:*) Bash(git fetch) Bash(git remote:*) Bash(git config:*) Bash(git filter-branch:*) Bash(git update-ref:*) Bash(git checkout origin/*)" );;
   esac
 fi
 
