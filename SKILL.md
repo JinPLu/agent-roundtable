@@ -1,79 +1,77 @@
 ---
 name: agent-roundtable
-description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. The user's models live in `models.json` (gitignored, chmod 600) — they edit it directly to add their endpoints; the agent reads only the non-secret metadata, WebSearches the user's models for benchmarks/pricing, fills those into `models.json`, and runs `scripts/backend.sh apply` to write the per-actor env files. The api_key never enters chat or the agent's context.
+description: Coordinate Codex CLI, Claude Code, and Cursor subagents as peers around a shared on-disk thread under `<repo>/.roundtable/threads/<slug>/`. Each turn appends a five-part Read/Did/Verification/Open-questions/Hand-off entry to THREAD.md. Use when dispatching tasks to two or more LLM CLIs on a single goal, when a durable cross-actor audit trail is required, when a planner-executor-reviewer convergence loop is wanted, or when the user invokes this skill by name.
 disable-model-invocation: true
 ---
 
 # Agent Roundtable
 
-A thin file-based substrate where participants take turns around a shared on-disk thread under `$ROUNDTABLE_ROOT/threads/<slug>/`. Use when two+ CLIs work on one goal or you need a durable on-disk audit trail.
+A file-based substrate where Codex CLI, Claude Code, and Cursor `Task` subagents take turns around a shared on-disk thread. Each turn is durable and auditable; the chat parent (the IDE model) orchestrates but never executes a turn itself.
 
-## First-run setup (default flow when this skill is invoked)
+## Architecture
 
-> **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as ❌ NOT IMPORTED and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
+| Participant | Role |
+|---|---|
+| **Chat parent** | The model running the IDE conversation. Orchestrates only — **never a dispatch target.** |
+| **Cursor subagent** | Any model reachable via Cursor's `Task` tool. Auth handled by Cursor IDE. |
+| **Codex CLI** | Any OpenAI-compatible endpoint (OpenAI, Azure, proxies, local vLLM, …). |
+| **Claude CLI** | Any Anthropic-compatible endpoint (Anthropic, DeepSeek-compat, Bedrock-compat, …). |
 
-The contract is **the user fills 4 fields per model; the agent fills the rest.** Everything lives in `<SKILL_DIR>/models.json` (gitignored, chmod 600).
+Any participant can play any role — planner, executor, reviewer, discussant. The chat parent picks who plays what (with `route.sh` as a hint) after confirming with the user.
+
+## First-run setup
+
+> The chat parent **MUST** run this flow whenever `scripts/backend.sh show` reports both actors as ❌ NOT IMPORTED and the user has not arranged auth out-of-band. Skip only if the user confirms they have working `codex login` / `claude auth login`.
+>
+> Contract: **the user fills 4 fields per model; the agent fills the rest.** Everything lives in `<SKILL_DIR>/models.json` (gitignored, chmod 600). The api_key never enters chat or agent context.
 
 Step-by-step:
 
-1. **Init + show** (agent): `scripts/backend.sh init && scripts/backend.sh show`. `init` copies `models.example.json` to `models.json` (idempotent, chmod 600). The shipped example contains one `_template` placeholder under `models` plus four pre-filled `cursor-subagent` entries that need no endpoint.
+1. **Init** (agent): `scripts/backend.sh init && scripts/backend.sh show`. `init` copies `models.example.json` → `models.json` (idempotent, chmod 600). The example ships one `_template` placeholder, four pre-filled `cursor-subagent` entries (no endpoint required), and four pre-researched BYOK templates (gpt-5.5, gpt-5.3-codex, claude-4.7-opus, claude-4.6-sonnet).
 
-2. **User fills 4 fields per model** (user, in editor): open `<SKILL_DIR>/models.json` and for each model with credentials, replace the `_template` entry (or add a new key) with:
+2. **User fills 4 fields per model** (user, in editor): open `<SKILL_DIR>/models.json` and for each model with credentials, either edit a pre-researched BYOK template or add a fresh entry under `models` with the four fields below (real JSON, no comments — the inline annotations here are for reading only):
+
    ```json
-   "gpt-5": {                                      // ← any id you want (must NOT start with _)
-     "actor":   "codex",                           // codex (OpenAI-compat) or claude (Anthropic-compat)
-     "cli_arg": "gpt-5",                           // exact model id the API expects
+   "gpt-5": {
+     "actor":   "codex",
+     "cli_arg": "gpt-5",
      "endpoint": {
        "base_url": "https://api.openai.com/v1",
        "api_key":  "sk-..."
      }
    }
    ```
-   For Claude on a shim (DeepSeek-compat etc.) also add `endpoint.{opus,sonnet,haiku}_model` and (optional) `endpoint.claude_effort_level`. Then set `active.codex` and/or `active.claude` to the model id. Save and reply `done`.
 
-3. **Inspect non-secret state** (agent): `scripts/backend.sh show` prints a two-section summary — per-actor import status (✅ IMPORTED / ❌ NOT IMPORTED / ⚠ PLACEHOLDER / ⚠ INCOMPLETE) and a catalog table marking active rows with ★. The api_key is never printed; only its presence is.
+   Field semantics: any model id (must NOT start with `_`) → `actor` is `codex` (OpenAI-compat) or `claude` (Anthropic-compat) → `cli_arg` is the exact id the API expects → `endpoint.base_url` and `endpoint.api_key`. For `claude` on an Anthropic-compat shim also set `endpoint.{opus,sonnet,haiku}_model` and optionally `endpoint.claude_effort_level`. Then set `active.codex` / `active.claude` to the model id. Save, reply `done`.
 
-4. **Research + auto-fill metadata** (agent): for each entry that the user just added (i.e. has an `endpoint` block but lacks `underlying` / `context_window_k` / `max_output_k` / `benchmarks` / `best_for` / `pricing`), call `WebSearch` with the model id + provider — e.g. `"gpt-5 OpenAI context window benchmark pricing 2026"`. Patch the discovered values back into the same `models.<id>` entry, preserving `actor`, `cli_arg`, `endpoint`. If WebSearch returns nothing reliable, ask the user for a docs URL and `WebFetch` it. Then add the model id to the appropriate `role_defaults` lists (typically `executor` + `reviewer` for top-tier, `compactor` + `triage` for cheap models).
+3. **Inspect** (agent): `scripts/backend.sh show` — two-section summary. Per-actor import status (✅ IMPORTED / ❌ NOT IMPORTED / ⚠ PLACEHOLDER / ⚠ INCOMPLETE) and a catalog table marking active rows with ★. The api_key is never printed; only its presence.
 
-5. **Apply** (agent): `scripts/backend.sh apply` reads `models.json`, walks `active.{codex,claude}`, and writes `.codex_env.local` / `.claude_env.local` (chmod 600). The api_key is read by a python subprocess inside `apply` and written via `printf %q` — never echoed to stdout. `apply` automatically skips any entry whose key starts with `_` or whose values still contain `REPLACE_WITH:*` placeholders.
+4. **Research + auto-fill metadata** (agent): for each entry the user just added that lacks capability fields (`underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`), call `WebSearch` with the model id + provider — e.g. `"gpt-5 OpenAI context window benchmark 2026"` — and patch the values back. Preserve `actor`, `cli_arg`, `endpoint`. For `pricing`, follow the freshness contract (see Sharp edges #4): re-research when `pricing._as_of` is missing/stale or `endpoint.base_url` is a discount proxy. Add the model id to relevant `role_defaults` lists.
 
-6. **Verify** (agent): `scripts/backend.sh show` to confirm ✅ IMPORTED with the right model id, then dispatch a 1-line health-check per active actor — e.g. `scripts/codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`. Exit 0 + `ok` in `last.md` confirms the endpoint actually answers.
+5. **Apply** (agent): `scripts/backend.sh apply` reads `models.json`, walks `active.{codex,claude}`, writes `.codex_env.local` / `.claude_env.local` (chmod 600). The api_key is read by a python subprocess and written via `printf %q` — never echoed to stdout. Entries whose key starts with `_` or whose values contain `REPLACE_WITH:*` are skipped automatically.
 
-Re-running `init` is a no-op once `models.json` exists. Re-running `apply` overwrites the `.local` files. Editing `models.json` by hand to add/swap/tweak entries and re-running `apply` is the standard switching motion. For ad-hoc overrides without touching the registry: `scripts/backend.sh codex <url> <key> <model>` / `scripts/backend.sh claude <url> <key> <opus> [sonnet] [haiku] [effort]` writes the `.local` file directly.
+6. **Verify** (agent): `scripts/backend.sh show` confirms ✅ IMPORTED. Then dispatch a 1-line health-check per active actor:
 
-## Architecture — who does what
+   ```bash
+   scripts/codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"
+   ```
 
-| Role | Who |
-|---|---|
-| **Chat parent** | The model running the IDE conversation. **Stays on the main thread; never a dispatch target.** |
-| **Cursor subagent** | Any model available via Cursor's `Task` tool. |
-| **Codex CLI** | Any OpenAI-compatible endpoint (OpenAI, Azure, cialloapi, local vLLM, …). Set with `scripts/backend.sh codex`. |
-| **Claude CLI** | Any Anthropic-compatible endpoint (Anthropic, DeepSeek-compat, Bedrock-compat, …). Set with `scripts/backend.sh claude`. |
+   Exit 0 + `ok` in `last.md` confirms the endpoint answers.
 
-Any participant can play any role — planner, executor, reviewer, discussant. The chat parent decides who plays what (with `route.sh` as a hint) after confirming with the user.
+Re-running `init` is a no-op once `models.json` exists. Re-running `apply` overwrites the `.local` files. The standard switching motion is: edit `models.json` → run `apply`. For ad-hoc overrides without touching the registry:
 
-## Setup
+```bash
+scripts/backend.sh codex  <base-url> <api-key> [default-model]
+scripts/backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model] [effort]
+```
 
-- **Env**: `ROUNDTABLE_REPO_ROOT` (auto-detected git root), `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`), `ROUNDTABLE_TAIL_K` (recent turns inlined; default `3`).
-- **Backend (default path — single source of truth in `models.json`):**
-  ```bash
-  scripts/backend.sh init        # seed <SKILL_DIR>/models.json from models.example.json (gitignored, chmod 600)
-  $EDITOR <SKILL_DIR>/models.json   # add `endpoint: {base_url, api_key}` to a model, set `active.{codex,claude}`
-  scripts/backend.sh apply       # write .codex_env.local / .claude_env.local from the active models
-  scripts/backend.sh show        # inspect current state — key never printed, only presence
-  scripts/backend.sh clear codex # remove .codex_env.local → fall back to CLI's own login
-  ```
-- **Backend (escape-hatch, ignores `models.json`):**
-  ```bash
-  scripts/backend.sh codex  <base-url> <api-key> [default-model]
-  scripts/backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model]
-  ```
-  Useful for ad-hoc overrides without touching `models.json`.
-- **Catalog vs. registry**: `models.example.json` is the shipped catalog (tracked in git). `models.json` is the user's working copy (gitignored, holds keys). `route.sh` and `_common.sh resolve_model` read whichever exists, falling back to the example, so signal-based routing keeps working even before `init`.
+## Reference
+
+- **Env vars**: `ROUNDTABLE_REPO_ROOT` (auto-detected git root), `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`), `ROUNDTABLE_TAIL_K` (recent turns inlined into prompts; default `3`), `ROUNDTABLE_TIMEOUT_S` (default for `--timeout-s`; codex `1800`, claude `1500`).
+- **Catalog vs. registry**: `models.example.json` is the shipped catalog (tracked in git). `models.json` is the user's working copy (gitignored, holds keys). `route.sh` and `_common.sh resolve_model` read whichever exists, falling back to the example, so signal-based routing works even before `init`.
 - **CLI env-var contract** (what `backend.sh apply` writes, matching official CLI docs):
-  - `.codex_env.local` → `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_DEFAULT_MODEL`. Codex CLI honors these for any OpenAI-compatible endpoint (model also overridable via `--model` / `-c model='"…"'`). See [developers.openai.com/codex/config-reference](https://developers.openai.com/codex/config-reference).
-  - `.claude_env.local` → `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, plus `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` and `CLAUDE_CODE_{SUBAGENT_MODEL,EFFORT_LEVEL}` when the registry sets them. Claude Code CLI maps each model alias (`claude --model opus|sonnet|haiku`) to the corresponding default, so a single shim endpoint can serve all three roles. See [code.claude.com/docs/en/env-vars](https://code.claude.com/docs/en/env-vars).
-  - The api_key is written via a python subprocess that reads `models.json` directly and emits `printf %q`-quoted assignments — never echoed to stdout, never enters chat or the agent's context.
+  - `.codex_env.local` → `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_DEFAULT_MODEL`. Codex CLI honors these for any OpenAI-compatible endpoint; model is also overridable via `--model` or `-c model='"…"'`. See [developers.openai.com/codex/config-reference](https://developers.openai.com/codex/config-reference).
+  - `.claude_env.local` → `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, plus `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL` and `CLAUDE_CODE_{SUBAGENT_MODEL,EFFORT_LEVEL}` when the registry sets them. Claude Code CLI maps each alias (`claude --model opus|sonnet|haiku`) to the corresponding default — one shim endpoint can serve all three. See [code.claude.com/docs/en/env-vars](https://code.claude.com/docs/en/env-vars).
 
 ## Thread layout
 
