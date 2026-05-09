@@ -17,7 +17,9 @@ Run two or more reviewers from different actor families against the same target,
 ## Don't use when
 
 - A small change where one reviewer is sufficient — overkill, wastes tokens. Run a single `claude_turn.sh ... --role reviewer` instead.
-- You haven't run `roundtable-init` and `models.json` is missing. Bounce to that sub-skill first.
+- **You also want to make code changes.** Reviewers are read-only. To act on findings use `roundtable-execute` (N parallel candidate fixes) or `roundtable-goal` (plan → execute → review convergence loop). This sub-skill stops at the verdict by design.
+- **You want a full plan→execute→review loop, not a one-shot verdict.** That is `roundtable-goal`'s contract — it owns iteration; this sub-skill does not.
+- You haven't run `roundtable-setup` and `models.json` is missing. Bounce to that sub-skill first.
 - The change is exploratory / unfinished. Reviewers need stable artifacts to evaluate; review when the executor's turn is complete, not mid-stream.
 
 ## Why blind, why cross-vendor
@@ -75,4 +77,4 @@ Read the aggregator's `verdict.json` from its `history/<actor>/<ts>/verdict.json
 
 ## Hand off
 
-Present the merged verdict to the user with a one-line recommendation: `accept` / `revise` / `escalate-to-user`. Do **not** auto-fix BLOCKERs — that is `roundtable-develop` territory. If the user wants to act on findings, hand off to `roundtable-develop` so the loop can converge with the same audit trail.
+Present the merged verdict to the user with a one-line recommendation: `accept` / `revise` / `escalate-to-user`. Do **not** auto-fix BLOCKERs — that is `roundtable-execute` (N candidate fixes) or `roundtable-goal` (single converging fix) territory. If the user wants to act on findings, hand off to one of those so the loop can continue with the same audit trail.

@@ -123,3 +123,21 @@ The following capabilities must NOT regress; each is preserved by the refactor:
 ---
 
 Applied 2026-05-10: surgical operational fixes from `docs/research/AGENT_LOOPS-2026-05-10.md` §4.4 — README citation re-pointed to arXiv 2604.07650; Phase 5 fast-fail + Budget knob; executor within-turn self-critique; aggregator `scope_violation` auto-check. See commit on `origin/main` immediately following research commit `bf42d20f`.
+
+## 2026-05-10 reorg
+
+The 3-sub-skill carving (`roundtable-init` / `roundtable-review` / `roundtable-develop`) was conflating three distinct shapes of multi-agent work onto two of those skills, and offered no native dispatch shape for option-surfacing or candidate-racing. Carved into 5 sub-skills, ordered low → high commitment:
+
+1. **`roundtable-setup`** (rename of `roundtable-init`) — config `models.json`, API keys, generate `AGENTS.md` / `CLAUDE.md`.
+2. **`roundtable-discuss`** (NEW) — N parallel discussants from different vendors surface options and trade-offs into `artifacts/options.md`. Synthesis turn merges, **does not recommend**. User picks. Resists the sycophancy convergence failure-mode (arXiv 2509.23055) by never instructing convergence.
+3. **`roundtable-review`** (kept) — cross-vendor parallel blind review + aggregator. Verdict only, no code changes. `Don't use when` sharpened to point at `roundtable-execute` (you also want code) and `roundtable-goal` (full plan→execute→review loop).
+4. **`roundtable-execute`** (NEW) — N executors from different vendors implement the SAME task on isolated worktrees, aggregator picks the single best candidate by `evidence_delta` against `GOAL.md`. Direct application of cross-vendor independence (arXiv 2604.07650): N families produce more diverse solutions than N executors of the same family.
+5. **`roundtable-goal`** (rename of `roundtable-develop`) — single executor, planner → execute → parallel-blind-review → aggregate, iterate to BLOCKER==0. Preserves the Phase 5 fast-fail / budget / `scope_violation` / self-critique additions from commit `e08919c`.
+
+Boundary discipline (the user named these explicitly):
+- **goal vs execute**: goal iterates to converge on one answer; execute races N candidates to pick one. They form a pipeline (`execute` → pick winner → `goal` for polish), not alternatives.
+- **execute vs review**: execute writes code; review only reads code. Never both in one sub-skill (that's `goal`).
+- **discuss vs `goal` Phase 1 planner**: discuss never produces a `plan.md`; planner does. Discuss precedes the decision to run `goal` at all.
+- **discuss vs `superpowers:brainstorming`**: brainstorming is single-agent Socratic Q&A with the user; discuss is multi-vendor parallel research the user reads. Complementary, not redundant.
+
+Reorg commit on `origin/main` immediately following this audit-doc edit.

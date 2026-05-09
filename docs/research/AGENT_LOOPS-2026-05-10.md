@@ -204,3 +204,7 @@ In order of leverage-per-line-of-change:
 - **Cursor agents internals.** No published source code; I rely on in-product UI and docs.
 - **arXiv IDs with year prefix `26xx`.** These are arXiv submissions from 2026; today's date is 2026-05-10, so they are real but very recent and not yet replicated. I have flagged each as "medium" or "strong" evidence accordingly and read the abstracts directly.
 - **The exact prompt text of Codex's "continuation" and "budget-limit" templates.** PR #18076's description names them but I did not chase them down to the file in `codex-rs/core`. This is fine for our purposes — we care about the runtime behavior, not the exact wording.
+
+---
+
+2026-05-10: the 5-sub-skill carving (`roundtable-{setup,discuss,review,execute,goal}`) was applied; `roundtable-execute` is a direct application of the cross-vendor independence findings surfaced above (arXiv 2604.07650 + arXiv 2509.23055).

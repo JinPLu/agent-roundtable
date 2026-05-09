@@ -75,7 +75,7 @@ Your final assistant message MUST start directly with `**Read**:` and contain ON
 
   - `convergence_status` — one of `converged | progressing | stalled | regressed | unknown`.
   - `next_action_hint` — short string directive to the parent loop controller, e.g. `executor-rerun`, `planner-revise`, `switch-model`, `branch`, `escalate-to-user`, `accept-and-stop`.
-  - `evidence_delta_vs_prior_round` — discrete enum: `new | partial | none | n/a-first-round`. `none` is the loop-controller fast-fail signal (see `roundtable-develop` Phase 5).
+  - `evidence_delta_vs_prior_round` — discrete enum: `new | partial | none | n/a-first-round`. `none` is the loop-controller fast-fail signal (see `roundtable-goal` Phase 5).
   - `evidence_delta_notes` — optional free-form one-paragraph context for the enum value above (what changed in the artifact / failure shape / metric).
 
   Convergence-loop example:

@@ -1,9 +1,9 @@
 ---
-name: roundtable-init
-description: Use when the user asks to initialize, set up, or configure agent-roundtable, when `models.json` is missing, or when a project lacks `AGENTS.md` / `CLAUDE.md` for full-blood agent boot.
+name: roundtable-setup
+description: Use when the user asks to set up, initialize, or configure agent-roundtable, when `models.json` is missing, or when a project lacks `AGENTS.md` / `CLAUDE.md` for full-blood agent boot.
 ---
 
-# Roundtable Init
+# Roundtable Setup
 
 Bring a fresh checkout of `agent-roundtable` to a state where any sub-skill can dispatch a turn against the user's project — credentials live on disk in chmod-600 files, model registry is populated, and the project root has `AGENTS.md` / `CLAUDE.md` so each agent CLI boots with full project awareness instead of re-discovering the codebase from scratch.
 
@@ -11,7 +11,7 @@ Bring a fresh checkout of `agent-roundtable` to a state where any sub-skill can 
 
 - `models.json` is missing or contains only the `_template` entry.
 - The user says "set up", "initialize", "configure", "import a model", "switch backend".
-- A sub-skill (`roundtable-review`, `roundtable-develop`) refused to dispatch because `models.json` is absent.
+- A sub-skill (`roundtable-discuss`, `roundtable-review`, `roundtable-execute`, `roundtable-goal`) refused to dispatch because `models.json` is absent.
 - The user's project has no `AGENTS.md` and you are about to run a multi-turn flow against it.
 
 ## Don't use when
@@ -71,9 +71,11 @@ Explain that subsequent dispatches will boot with full project awareness.
 
 ## Hand off
 
-After init succeeds, point the user at the next sub-skill that matches their actual goal:
+After setup succeeds, point the user at the next sub-skill that matches their actual goal:
 
+- "Now you can run `roundtable-discuss` to surface design options."
 - "Now you can run `roundtable-review` for a cross-vendor review."
-- "Now you can run `roundtable-develop` for a planner→executor→reviewer loop."
+- "Now you can run `roundtable-execute` for N parallel candidate implementations."
+- "Now you can run `roundtable-goal` for a planner→executor→reviewer convergence loop."
 
 Do not auto-dispatch — wait for the user to state the task.

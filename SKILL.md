@@ -1,6 +1,6 @@
 ---
 name: agent-roundtable
-description: Use when dispatching tasks across two or more LLM actors (Codex CLI, Claude Code, Cursor subagents) on a shared on-disk thread, when a durable cross-actor audit trail is required, or when a planner-executor-reviewer convergence loop is needed.
+description: Use when dispatching tasks to two or more LLM actors on a single goal, when comparing candidate implementations across vendors, or when running an audit-trailed planner-executor-reviewer convergence loop.
 disable-model-invocation: true
 ---
 
@@ -10,13 +10,15 @@ A file-based multi-agent substrate. Codex CLI, Claude Code, and Cursor subagents
 
 ## Sub-skills (progressive disclosure)
 
-Read the sub-skill that matches the user's intent **before** taking any action. Each sub-skill is self-sufficient; do not re-read this router once you have picked one.
+Read the sub-skill that matches the user's intent **before** taking any action. Each sub-skill is self-sufficient; do not re-read this router once you have picked one. Ordered low to high commitment.
 
 | Intent | Sub-skill |
 |--------|-----------|
-| Initialize / configure / set API keys / generate `AGENTS.md` | `skills/roundtable-init/SKILL.md` |
-| Review code, audit security, check a PR, find bugs | `skills/roundtable-review/SKILL.md` |
-| Implement a feature, refactor, run the full quality loop | `skills/roundtable-develop/SKILL.md` |
+| Configure / set API keys / generate `AGENTS.md` for a fresh checkout | `skills/roundtable-setup/SKILL.md` |
+| Open-ended design question — surface options across vendors, no recommendation | `skills/roundtable-discuss/SKILL.md` |
+| Cross-vendor blind review, audit, PR check — verdict only, no code changes | `skills/roundtable-review/SKILL.md` |
+| N parallel executors implement the SAME task; aggregator picks the best candidate | `skills/roundtable-execute/SKILL.md` |
+| Single executor + parallel blind review, iterate to convergence on a fixed goal | `skills/roundtable-goal/SKILL.md` |
 
 ## Hard rules (apply to every sub-skill)
 
@@ -47,6 +49,6 @@ Sub-skills cite this block by name. Do not duplicate it elsewhere.
 
 - **Scripts** (under `$SKILL/scripts/`): `codex_turn.sh`, `claude_turn.sh`, `backend.sh`, `new_thread.sh`. Auto-resolve `ROUNDTABLE_PROJECT_ROOT` from the caller's git toplevel; threads land at `$PROJECT_ROOT/.roundtable/threads/<slug>/`.
 - **Roles** (under `$SKILL/roles/`): `planner`, `executor`, `reviewer`, `devils-advocate`, `reviewer-aggregator`, `discussant`. Each ships a system prompt and (for reviewers) a JSON schema.
-- **Models** (`$SKILL/models.json`, gitignored): user's local registry; populated via `backend.sh init`. Sub-skill `roundtable-init` walks the user through this.
+- **Models** (`$SKILL/models.json`, gitignored): user's local registry; populated via `backend.sh init`. Sub-skill `roundtable-setup` walks the user through this.
 
 Deeper reference: `docs/advanced.md`, `docs/MODEL-CAPABILITY-GUIDE.md`.

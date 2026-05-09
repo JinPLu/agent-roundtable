@@ -88,7 +88,7 @@
     "evidence_delta_vs_prior_round": {
       "type": "string",
       "enum": ["new", "partial", "none", "n/a-first-round"],
-      "description": "Convergence-loop mode only. Discrete classification of how this round's evidence differs from the prior round's reviewer verdict. 'new' = materially fresh evidence (artifact / failure shape / metric); 'partial' = some movement but key gaps unchanged; 'none' = no new evidence at all (loop-controller fast-fail signal — see roundtable-develop Phase 5); 'n/a-first-round' = no prior round to compare against. Use evidence_delta_notes for free-form context."
+      "description": "Convergence-loop mode only. Discrete classification of how this round's evidence differs from the prior round's reviewer verdict. 'new' = materially fresh evidence (artifact / failure shape / metric); 'partial' = some movement but key gaps unchanged; 'none' = no new evidence at all (loop-controller fast-fail signal — see roundtable-goal Phase 5); 'n/a-first-round' = no prior round to compare against. Use evidence_delta_notes for free-form context."
     },
     "evidence_delta_notes": {
       "type": "string",

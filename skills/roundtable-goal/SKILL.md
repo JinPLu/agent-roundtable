@@ -1,11 +1,11 @@
 ---
-name: roundtable-develop
-description: Use when implementing a feature, refactoring, or running the full quality loop (plan → execute → parallel blind review → aggregate → loop) on a non-trivial change with cross-vendor verification.
+name: roundtable-goal
+description: Use when pursuing a feature or refactor to convergence with cross-vendor verification — a single executor iterates against parallel blind reviewers until the goal is met or the budget hits.
 ---
 
-# Roundtable Develop
+# Roundtable Goal
 
-The full quality loop. A `planner` writes `artifacts/plan.md`, an `executor` implements it, two cross-vendor reviewers (`reviewer` + `devils-advocate`, both `--blind`) verify, a `reviewer-aggregator` produces the merged verdict, and the loop iterates until the stop condition is met. Every turn is appended to `THREAD.md` with full audit trail.
+The convergence loop. A `planner` writes `artifacts/plan.md`, a single `executor` implements it, two cross-vendor reviewers (`reviewer` + `devils-advocate`, both `--blind`) verify, a `reviewer-aggregator` produces the merged verdict, and the loop iterates until the stop condition is met. Every turn is appended to `THREAD.md` with full audit trail.
 
 ## Use when
 
@@ -18,7 +18,9 @@ The full quality loop. A `planner` writes `artifacts/plan.md`, an `executor` imp
 
 - A one-line fix or a trivial rename — the loop overhead dominates the work. Use a single `executor` turn or just edit directly.
 - The user wants to ship fast and accepts the quality risk — surface that trade-off and let them choose. Consider `superpowers:subagent-driven-development` instead, which has lower review overhead.
-- `models.json` is unconfigured — bounce to `roundtable-init`.
+- The user wants **multiple candidate implementations to compare**, not iteration to a single answer — use `roundtable-execute` (N parallel executors, then pick a winner). Pipeline `execute` → `goal` if the winner needs polishing.
+- The right approach is still unsettled and the user wants options surfaced first — use `roundtable-discuss` before committing to a plan.
+- `models.json` is unconfigured — bounce to `roundtable-setup`.
 
 ## Why the loop
 
@@ -89,4 +91,4 @@ Read the aggregator's `verdict.json`:
 
 On convergence, report the final aggregator `verdict.json` path, the commit summary (`git log <thread-start-sha>..HEAD`), and point the user at `superpowers:finishing-a-development-branch` for merge / PR mechanics.
 
-Related: `roundtable-review` (verdict-only, no plan/execute), `superpowers:subagent-driven-development` (fresh-subagent loop, no on-disk audit trail).
+Related: `roundtable-discuss` (option matrix before you commit), `roundtable-execute` (N candidates in parallel, then pick one), `roundtable-review` (verdict-only, no plan/execute), `superpowers:subagent-driven-development` (fresh-subagent loop, no on-disk audit trail).
