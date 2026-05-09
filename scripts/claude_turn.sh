@@ -15,37 +15,20 @@ _usage() {
 Usage: claude_turn.sh <slug> --role ROLE [options]
 
 Required:
-  <slug>                Thread slug (must already exist).
-  --role ROLE           planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
+  <slug>            Thread slug (must already exist).
+  --role ROLE       planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
 
 Options:
-  --model MODEL         sonnet | opus | haiku | <full-name> (default from models.json).
-  --effort LEVEL        low | medium | high | xhigh | max (default: high).
-  --permission-mode M   plan | acceptEdits | auto | dontAsk | bypassPermissions
-                        (default: plan for reviewer; acceptEdits otherwise).
-  --bare                Pass --bare to claude (skips CLAUDE.md and project customizations).
-  --blind               Suppress injection of the latest reviewer verdict block into the
-                        prompt. Prevents modal adoption sycophancy (85.5% rate observed
-                        when agents see prior verdicts, per arXiv 2605.00914). Use for
-                        all parallel reviewers in a multi-reviewer round; the aggregator
-                        turn must NOT use --blind (it needs to see all verdicts).
-                        Records blind=true in meta.json.
-  --worktree NAME       Use/create a git worktree for this turn.
-  --allowed-tools LIST  Space-separated tool allowlist (overrides role defaults).
-  --addendum TEXT       Extra instructions appended to the prompt.
-  --addendum-file FILE  File whose contents are appended to the prompt.
-  --timeout-s SECONDS   Hard wallclock cap for claude; on timeout the run is
-                        killed and the turn is marked exit=124 (default: 1500).
-                        DeepSeek-compat shims have wide tail latency — observed
-                        successful reviewer turns up to 1017s. Bump higher if
-                        you hit exit=124 with empty last.json.
-  -h, --help            Print this help and exit.
+  -m, --model M     Model passed to claude (default: from models.json).
+  --effort LEVEL    low | medium | high | xhigh | max (default: high).
+  --task TEXT       Per-turn instruction appended to the prompt.
+  --task-file FILE  Per-turn instruction read from file (use for long inputs).
+  --blind           Suppress prior reviewer verdict — required for parallel reviewers.
+  -h, --help        Print this help.
 
 Environment:
-  ROUNDTABLE_PROJECT_ROOT  Project root (default: auto-detected via git).
-  ROUNDTABLE_ROOT          Artifacts root (default: $ROUNDTABLE_PROJECT_ROOT/.roundtable).
-  ROUNDTABLE_TAIL_K     Recent turns inlined into prompts (default: 3).
-  ROUNDTABLE_TIMEOUT_S  Default for --timeout-s (default: 1500).
+  ROUNDTABLE_PROJECT_ROOT  Project root (default: caller's git toplevel).
+  ROUNDTABLE_TIMEOUT_S     Wallclock cap in seconds, 0 disables (default: 1500).
 EOF
 }
 
@@ -55,35 +38,26 @@ done
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 slug="${1:?missing thread slug}"; shift
-role=""; model=""; effort="high"; perm=""; bare=0; blind=0
-worktree=""; addendum=""; addendum_file=""; allowed_tools_override=""
+role=""; model=""; effort="high"; blind=0
+task=""; task_file=""
 timeout_s="${ROUNDTABLE_TIMEOUT_S:-1500}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) role="$2"; shift 2;;
-    --model) model="$2"; shift 2;;
+    -m|--model) model="$2"; shift 2;;
     --effort) effort="$2"; shift 2;;
-    --permission-mode) perm="$2"; shift 2;;
-    --bare) bare=1; shift;;
+    --task) task="$2"; shift 2;;
+    --task-file) task_file="$2"; shift 2;;
     --blind) blind=1; shift;;
-    --worktree) worktree="$2"; shift 2;;
-    --allowed-tools) allowed_tools_override="$2"; shift 2;;
-    --addendum) addendum="$2"; shift 2;;
-    --addendum-file) addendum_file="$2"; shift 2;;
-    --timeout-s) timeout_s="$2"; shift 2;;
-    *) echo "unknown flag: $1" >&2; exit 2;;
+    *) echo "unknown flag: $1 (try -h)" >&2; exit 2;;
   esac
 done
 [[ -z "$role" ]] && { echo "ERROR: --role required" >&2; exit 2; }
 
-# Pre-flight: addendum-file must be readable BEFORE we touch anything else.
-# Without this, `cat` failure under `set -e` silently aborts the turn
-# (observed when Cursor's sandboxed `nohup &` subshell sees an isolated /tmp).
-if [[ -n "$addendum_file" && ! -r "$addendum_file" ]]; then
-  echo "ERROR [claude_turn.sh]: --addendum-file '$addendum_file' is missing or unreadable." >&2
-  echo "  If running inside Cursor's sandboxed Shell tool, write the addendum to a" >&2
-  echo "  workspace-visible path (e.g. <thread-dir>/.tmp_addendum.md) instead of /tmp/*" >&2
-  echo "  — Cursor's nohup subshell has an isolated /tmp namespace." >&2
+# Pre-flight: task-file must be readable BEFORE we touch anything else.
+if [[ -n "$task_file" && ! -r "$task_file" ]]; then
+  echo "ERROR [claude_turn.sh]: --task-file '$task_file' missing or unreadable." >&2
+  echo "  If running inside Cursor's sandboxed Shell tool, use a workspace-visible path." >&2
   exit 2
 fi
 
@@ -91,14 +65,11 @@ if [[ -z "$model" ]]; then
   eval "$( resolve_model claude "$role" "" "$effort" )"
 fi
 
-# Default permission-mode: reviewer stays read-only (plan); all other roles
-# get acceptEdits so they can write artifacts under the thread dir.
-if [[ -z "$perm" ]]; then
-  case "$role" in
-    reviewer|reviewer-aggregator|devils-advocate) perm="plan";;
-    *) perm="acceptEdits";;
-  esac
-fi
+# Permission-mode: reviewer-likes get plan (read-only); others get acceptEdits.
+case "$role" in
+  reviewer|reviewer-aggregator|devils-advocate) perm="plan";;
+  *) perm="acceptEdits";;
+esac
 
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
@@ -127,15 +98,12 @@ hist="${thread_dir}/history/claude/${ts_c}"
 mkdir -p "$hist"
 
 _cwd="$repo_root"
-if [[ -n "$worktree" ]]; then
-  _cwd="$(ensure_worktree "$thread_dir" "$worktree")"
-fi
 
-# Compose addendum.
+# Compose addendum from task / task-file.
 _add="${hist}/addendum.md"
 : > "$_add"
-[[ -n "$addendum_file" ]] && cat "$addendum_file" >> "$_add"
-[[ -n "$addendum" ]] && printf '\n%s\n' "$addendum" >> "$_add"
+[[ -n "$task_file" ]] && cat "$task_file" >> "$_add"
+[[ -n "$task" ]] && printf '\n%s\n' "$task" >> "$_add"
 mapfile -t _warnings < <(warn_addendum_sanity "$_add" "claude_turn.sh")
 # Role guidelines are sent via --append-system-prompt; skip the inline duplicate.
 # Blind mode: suppress the prior verdict block to prevent modal adoption sycophancy
@@ -148,32 +116,18 @@ _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --a
 if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" && "$ROUNDTABLE_PROJECT_ROOT" != "$thread_dir" ]]; then
   _args+=( --add-dir "$ROUNDTABLE_PROJECT_ROOT" )
 fi
-# Note: dynamic system prompt sections (CLAUDE.md, project structure hints,
-# recent files) stay enabled by default — they help the agent explore. Use
-# --bare for strict isolation.
 [[ -n "$model" ]] && _args+=( --model "$model" )
 [[ -f "$role_sys" ]] && _args+=( --append-system-prompt "$(cat "$role_sys")" )
-[[ "$bare" -eq 1 ]] && _args+=( --bare )
 
 # Per-role tool surface — minimal disablement principle.
-# Reviewer roles: write-protection comes from --permission-mode plan (set above);
-#   all other tools (WebSearch, WebFetch, Bash, Read, …) stay enabled so the
-#   agent has full diagnostic capability.
+# Reviewer-likes get write protection via --permission-mode plan; no allowlist.
 # Executor / planner / discussant: only destructive git operations are blocked.
-# When user provides --allowed-tools override, they take full responsibility.
 _tools=()
-if [[ -n "${allowed_tools_override:-}" ]]; then
-  _tools+=( --allowedTools "$allowed_tools_override" )
-else
-  case "$role" in
-    reviewer|reviewer-aggregator|devils-advocate)
-      : ;;  # plan mode + role prompt enforce read-only intent; no allowlist needed.
-    *)
-      # Truly destructive ops only — fetch/remote/config/checkout origin/* are
-      # legitimate exploration tools and stay enabled.
-      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
-  esac
-fi
+case "$role" in
+  reviewer|reviewer-aggregator|devils-advocate) : ;;
+  *)
+    _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
+esac
 
 _start=$(date +%s)
 set +e

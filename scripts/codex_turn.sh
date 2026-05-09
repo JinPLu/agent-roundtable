@@ -15,33 +15,20 @@ _usage() {
 Usage: codex_turn.sh <slug> --role ROLE [options]
 
 Required:
-  <slug>                Thread slug (must already exist).
-  --role ROLE           planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
+  <slug>            Thread slug (must already exist).
+  --role ROLE       planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
 
 Options:
-  -m, --model MODEL     Model name passed to codex (default: from models.json).
-  --effort LEVEL        low | medium | high (default: medium).
-  -s, --sandbox MODE    read-only | workspace-write | danger-full-access
-                        (default: workspace-write for all roles).
-  --addendum TEXT       Extra instructions appended to the prompt.
-  --addendum-file FILE  File whose contents are appended to the prompt.
-  --blind               Suppress injection of the latest reviewer verdict block into the
-                        prompt. Prevents modal adoption sycophancy (85.5% rate observed
-                        when agents see prior verdicts, per arXiv 2605.00914). Use for
-                        all parallel reviewers in a multi-reviewer round; the aggregator
-                        turn must NOT use --blind (it needs to see all verdicts).
-                        Records blind=true in meta.json.
-  --worktree NAME       Use/create a git worktree for this turn.
-  --timeout-s SECONDS   Hard wallclock cap for codex; on timeout we still salvage
-                        trace.jsonl and emit a turn marked exit=124. Pass 0 to
-                        disable timeout entirely (default: 1800).
-  -h, --help            Print this help and exit.
+  -m, --model M     Model passed to codex (default: from models.json).
+  --effort LEVEL    low | medium | high (default: medium).
+  --task TEXT       Per-turn instruction appended to the prompt.
+  --task-file FILE  Per-turn instruction read from file (use for long inputs).
+  --blind           Suppress prior reviewer verdict — required for parallel reviewers.
+  -h, --help        Print this help.
 
 Environment:
-  ROUNDTABLE_PROJECT_ROOT  Project root (default: auto-detected via git).
-  ROUNDTABLE_ROOT          Artifacts root (default: $ROUNDTABLE_PROJECT_ROOT/.roundtable).
-  ROUNDTABLE_TAIL_K     Recent turns inlined into prompts (default: 3).
-  ROUNDTABLE_TIMEOUT_S  Default for --timeout-s, 0 disables (default: 1800).
+  ROUNDTABLE_PROJECT_ROOT  Project root (default: caller's git toplevel).
+  ROUNDTABLE_TIMEOUT_S     Wallclock cap in seconds, 0 disables (default: 1800).
 EOF
 }
 
@@ -52,32 +39,27 @@ done
 # ── Argument parsing ─────────────────────────────────────────────────────────
 slug="${1:?missing thread slug}"; shift
 role=""; model=""; effort="medium"; blind=0
-sandbox=""; addendum=""; addendum_file=""; worktree=""
+task=""; task_file=""
 timeout_s="${ROUNDTABLE_TIMEOUT_S:-1800}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) role="$2"; shift 2;;
     -m|--model) model="$2"; shift 2;;
     --effort) effort="$2"; shift 2;;
-    --sandbox|-s) sandbox="$2"; shift 2;;
+    --task) task="$2"; shift 2;;
+    --task-file) task_file="$2"; shift 2;;
     --blind) blind=1; shift;;
-    --addendum) addendum="$2"; shift 2;;
-    --addendum-file) addendum_file="$2"; shift 2;;
-    --worktree) worktree="$2"; shift 2;;
-    --timeout-s) timeout_s="$2"; shift 2;;
-    *) echo "unknown flag: $1" >&2; exit 2;;
+    *) echo "unknown flag: $1 (try -h)" >&2; exit 2;;
   esac
 done
 [[ -z "$role" ]] && { echo "ERROR: --role required" >&2; exit 2; }
 
-# Pre-flight: addendum-file must be readable BEFORE we touch anything else.
-# Without this, `cat` failure under `set -e` silently aborts the turn
-# (observed when Cursor's sandboxed `nohup &` subshell sees an isolated /tmp).
-if [[ -n "$addendum_file" && ! -r "$addendum_file" ]]; then
-  echo "ERROR [codex_turn.sh]: --addendum-file '$addendum_file' is missing or unreadable." >&2
-  echo "  If running inside Cursor's sandboxed Shell tool, write the addendum to a" >&2
-  echo "  workspace-visible path (e.g. <thread-dir>/.tmp_addendum.md) instead of /tmp/*" >&2
-  echo "  — Cursor's nohup subshell has an isolated /tmp namespace." >&2
+# Pre-flight: task-file must be readable BEFORE we touch anything else.
+# Without this, `cat` failure under `set -e` silently aborts the turn.
+if [[ -n "$task_file" && ! -r "$task_file" ]]; then
+  echo "ERROR [codex_turn.sh]: --task-file '$task_file' missing or unreadable." >&2
+  echo "  If running inside Cursor's sandboxed Shell tool, write the file to a" >&2
+  echo "  workspace-visible path (Cursor's nohup subshell has an isolated /tmp)." >&2
   exit 2
 fi
 
@@ -85,8 +67,7 @@ if [[ -z "$model" ]]; then
   eval "$( resolve_model codex "$role" "" "$effort" )"
 fi
 
-# All roles default to workspace-write; CWD determines the write boundary.
-[[ -z "$sandbox" ]] && sandbox="workspace-write"
+sandbox="workspace-write"  # CWD determines the actual write boundary
 
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
@@ -111,10 +92,7 @@ mkdir -p "$hist"
 # CWD + add-dir: executor runs from project root (so source writes are inside
 # the workspace-write sandbox); non-executor roles run from thread_dir to
 # scope writes to artifacts/, with project root added as read-only via --add-dir.
-if [[ -n "$worktree" ]]; then
-  _cwd="$(ensure_worktree "$thread_dir" "$worktree")"
-  _add_dir="$thread_dir"
-elif [[ "$role" == "executor" ]]; then
+if [[ "$role" == "executor" ]]; then
   _cwd="$ROUNDTABLE_PROJECT_ROOT"
   _add_dir="$thread_dir"
 else
@@ -122,11 +100,11 @@ else
   _add_dir="$ROUNDTABLE_PROJECT_ROOT"
 fi
 
-# Compose addendum.
+# Compose addendum from task / task-file.
 _add="${hist}/addendum.md"
 : > "$_add"
-[[ -n "$addendum_file" ]] && cat "$addendum_file" >> "$_add"
-[[ -n "$addendum" ]] && printf '\n%s\n' "$addendum" >> "$_add"
+[[ -n "$task_file" ]] && cat "$task_file" >> "$_add"
+[[ -n "$task" ]] && printf '\n%s\n' "$task" >> "$_add"
 if [[ "$role" == "executor" ]]; then
   cat >> "$_add" <<'GEOF'
 

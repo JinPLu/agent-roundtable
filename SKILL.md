@@ -164,8 +164,8 @@ $ROUNDTABLE_ROOT/threads/<slug>/
 | Script | Purpose | Key flags |
 |--------|---------|-----------|
 | `new_thread.sh <slug> "<goal>"` | Create thread + `latest` symlink | — |
-| `codex_turn.sh <slug> --role ROLE` | One `codex exec` turn | `-m`, `--effort`, `--sandbox`, `--blind`, `--worktree`, `--addendum[-file]`, `--timeout-s` |
-| `claude_turn.sh <slug> --role ROLE` | One `claude -p` turn | `--model`, `--effort`, `--permission-mode`, `--bare`, `--blind`, `--worktree`, `--allowed-tools`, `--addendum[-file]` |
+| `codex_turn.sh <slug> --role ROLE` | One `codex exec` turn | `-m`, `--effort`, `--task[-file]`, `--blind` |
+| `claude_turn.sh <slug> --role ROLE` | One `claude -p` turn | `-m`, `--effort`, `--task[-file]`, `--blind` |
 | `append_turn.sh <slug>` | Land Cursor subagent output into THREAD.md | `--actor`, `--role`, `--model`, `--body-file` |
 | `compact_thread.sh <slug>` | Compact old turns into THREAD_SUMMARY.md | `--keep K` (default 6) |
 | `route.sh --role ROLE` | Rank models by role defaults + signals | `--top N`, `--json`, `--budget`, `--latency`, `--diversity` |
