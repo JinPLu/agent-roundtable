@@ -34,6 +34,8 @@ The DEBATE / multi-agent-debate literature also says it explicitly: independent 
 
 Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) block from the root SKILL.md once. The `Multi?` line should read explicitly e.g. `N parallel executors: codex + claude` (or `+ cursor-subagent`). Wait for user approval (or an explicit "go").
 
+For N parallel executors, the estimator must be invoked once per actor and the per-actor bands summed in the confirmation block (e.g. `Est. : $0.05 + $1.20 + $0.30 = $1.55–$5.40/round`); a single per-turn band understates the cost by N× and was the original 20x miss this script exists to fix.
+
 ### Phase 1: isolate worktrees, dispatch N executors concurrently
 
 Each executor gets its own branch via `git worktree`. They share the same `--task` and the same `GOAL.md`, but never see each other's commits or threads.

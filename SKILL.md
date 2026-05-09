@@ -37,11 +37,14 @@ Proposed dispatch
   Role    : <role>
   Actor   : <actor>  →  model: <model-id>
   Effort  : <low | medium | high>
+  Est.    : $<low>–$<high>/turn  via `route.sh --role <role> -m <model> --estimate --turns 1`
   Multi?  : <single turn | N parallel>
   Budget  : <max-rounds=N | max-turns=M | max-wallclock=Xm>  (optional; default: 3 rounds, no clock cap)
 
 Proceed? Or adjust actor / effort / budget / go multi?
 ```
+
+The chat parent MUST run `route.sh ... --estimate` (or `scripts/lib/estimate_cost.py --model <alias> --role <role>` directly) before showing the confirmation; do not hand-estimate. Token *rates* in `models.json` are correct — past 20x undercounts came from guessing token *counts* for thinking-mode and agentic turns. The estimator's heuristic table lives at the top of `scripts/lib/estimate_cost.py` and is the auditable contract; recalibrate quarterly.
 
 Sub-skills cite this block by name. Do not duplicate it elsewhere.
 

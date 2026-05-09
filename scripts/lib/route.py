@@ -6,6 +6,9 @@ then applies optional signals to reorder/filter candidates.
 """
 import argparse, json, os, pathlib, shutil, subprocess, sys
 
+# Local import: same directory. estimate_cost is loaded lazily inside
+# recommend() so route.py keeps working even if estimate_cost.py is removed.
+
 _SKILL_DIR = pathlib.Path(__file__).resolve().parents[2]
 # Prefer the user's gitignored models.json; fall back to the shipped example
 # catalog so route.sh works on a fresh clone before `backend.sh init`.
@@ -119,9 +122,20 @@ def suggest_companion(primary_row: dict, all_rows: list[dict]) -> dict | None:
     return min(candidates, key=_input_cost)
 
 
+def _load_estimator():
+    """Lazy import so route.py stays usable if estimate_cost.py is missing."""
+    here = pathlib.Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import estimate_cost  # noqa: WPS433
+    return estimate_cost
+
+
 def recommend(
     role, top, json_out, cursor_subagent, budget, latency, output_heavy,
     diversity=False, blind=False, companion=None,
+    estimate=False, estimate_effort="medium", estimate_turns=1,
+    model_filter=None,
 ):
     try:
         registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
@@ -143,6 +157,20 @@ def recommend(
         model = models.get(alias)
         if model and model.get("actor") in available:
             all_rows.append({"alias": alias, **model})
+
+    if model_filter:
+        # Allow estimating a specific model that may be outside role_defaults
+        # (e.g. the user picked an explicit alias and wants the band).
+        if not any(r["alias"] == model_filter for r in all_rows):
+            m = models.get(model_filter)
+            if not m:
+                raise SystemExit(
+                    f"--model {model_filter!r} not found in registry "
+                    f"({REGISTRY.name})"
+                )
+            all_rows = [{"alias": model_filter, **m}]
+        else:
+            all_rows = [r for r in all_rows if r["alias"] == model_filter]
 
     has_signals = budget or latency or output_heavy or diversity
     if has_signals:
@@ -170,11 +198,44 @@ def recommend(
                 file=sys.stderr,
             )
 
+    estimator = _load_estimator() if estimate else None
+
+    def _row_estimate(alias: str) -> dict | None:
+        if not estimator:
+            return None
+        try:
+            return estimator.estimate(
+                alias,
+                role,
+                turns=estimate_turns,
+                effort=estimate_effort,
+                registry_path=REGISTRY,
+            )
+        except SystemExit as exc:
+            print(f"WARN: estimator skipped {alias}: {exc}", file=sys.stderr)
+            return None
+
     if json_out:
+        candidates_with_est = []
+        for r in rows:
+            candidate = dict(r)
+            if estimator:
+                est = _row_estimate(r["alias"])
+                if est is not None:
+                    candidate["cost_estimate"] = {
+                        "estimate_usd": est["estimate_usd"],
+                        "input_tokens_p50": est["input_tokens_p50"],
+                        "output_tokens_p50": est["output_tokens_p50"],
+                        "reasoning_tokens": est["reasoning_tokens"],
+                        "thinking": est["thinking"],
+                        "effort": est["effort"],
+                        "turns": est["turns"],
+                    }
+            candidates_with_est.append(candidate)
         out: dict = {
             "role": role,
             "available_actors": sorted(available),
-            "candidates": rows,
+            "candidates": candidates_with_est if estimator else rows,
         }
         signal_dict: dict = {}
         if budget:
@@ -229,6 +290,10 @@ def recommend(
                 f"  cli_arg={row.get('cli_arg')}"
                 f"  ${cost:.4f}/M-in{bench_str}"
             )
+            if estimator:
+                est = _row_estimate(row["alias"])
+                if est is not None:
+                    print(estimator.format_route_line(est))
         if companion_row is not None:
             cost = _input_cost(companion_row)
             print(
@@ -237,6 +302,10 @@ def recommend(
                 f"  ${cost:.4f}/M-in"
                 "  [dispatch alongside primary with --blind; Principle A]"
             )
+            if estimator:
+                est = _row_estimate(companion_row["alias"])
+                if est is not None:
+                    print(estimator.format_route_line(est))
     return 0 if rows else 1
 
 
@@ -297,6 +366,38 @@ def main():
             "--blind alongside the primary."
         ),
     )
+    parser.add_argument(
+        "-m", "--model",
+        default=None,
+        help=(
+            "Filter candidates to a specific alias (typically used with "
+            "--estimate to price a single picked model). If the alias is "
+            "outside role_defaults, it is still accepted as long as it exists "
+            "in the registry."
+        ),
+    )
+    parser.add_argument(
+        "--estimate",
+        action="store_true",
+        default=False,
+        help=(
+            "Append a one-line USD cost band per candidate via "
+            "scripts/lib/estimate_cost.py. Without this flag, output is "
+            "byte-identical to pre-estimator route.sh."
+        ),
+    )
+    parser.add_argument(
+        "--effort",
+        default="medium",
+        choices=["low", "medium", "high", "xhigh"],
+        help="Effort tier passed to the estimator (default medium).",
+    )
+    parser.add_argument(
+        "--turns",
+        type=int,
+        default=1,
+        help="Turns to pre-multiply the estimate by (default 1).",
+    )
     args = parser.parse_args()
     return recommend(
         args.role,
@@ -309,6 +410,10 @@ def main():
         diversity=args.diversity,
         blind=args.blind,
         companion=args.companion,
+        estimate=args.estimate,
+        estimate_effort=args.effort,
+        estimate_turns=args.turns,
+        model_filter=args.model,
     )
 
 

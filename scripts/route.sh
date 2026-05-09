@@ -14,6 +14,8 @@ Usage: route.sh --role ROLE [--top N] [--json] [--cursor-subagent]
                 [--diversity]
                 [--blind]
                 [--companion auto|MODEL]
+                [-m|--model ALIAS]
+                [--estimate [--effort low|medium|high|xhigh] [--turns N]]
 
 Recommend model aliases from models.json:role_defaults after filtering by
 available actors and applying optional task signals.
@@ -34,6 +36,19 @@ Signals (all optional, backward-compatible):
                        companion dispatch (Principle A: cheap cross-vendor
                        companion alongside any expensive dispatch). The
                        companion must always be dispatched with --blind.
+  -m, --model ALIAS    Filter candidates to a single alias (typically paired
+                       with --estimate to price the model the user picked).
+                       Accepts any alias present in the registry, even if not
+                       in role_defaults.
+  --estimate           Append a USD cost band per candidate (and companion)
+                       via scripts/lib/estimate_cost.py. Default-off: without
+                       this flag, route.sh output is byte-identical to the
+                       pre-estimator behaviour. The Dispatch Confirmation
+                       block in SKILL.md REQUIRES this flag.
+  --effort LEVEL       Estimator effort tier (low|medium|high|xhigh,
+                       default medium). Only meaningful with --estimate.
+  --turns N            Pre-multiply the estimate by N turns (default 1).
+                       Only meaningful with --estimate.
 
 Cheap companion convention (Principle A):
   Every expensive dispatch (cursor-claude-4.7-opus / cursor-claude-4.6-sonnet /
