@@ -9,8 +9,16 @@
     "_doc": "Set each actor to a model id from the `models` block. That model's `endpoint` is written to .codex_env.local / .claude_env.local. Leave null to skip an actor (its CLI will fall back to its own login)."
   },
   "endpoint_schema": {
-    "_doc": "Add this block to any model entry to make it credential-able. base_url has no trailing slash. api_key is treated as a secret — chmod 600 on models.json is recommended.",
-    "example": { "base_url": "https://api.openai.com/v1", "api_key": "sk-..." }
+    "_doc": "Add this block to any model entry to make it credential-able. base_url has no trailing slash. api_key is treated as a secret — chmod 600 on models.json is recommended. For Claude Code on a shim (DeepSeek-compat, Bedrock-compat, …) you almost always want separate opus/sonnet/haiku upstream ids; set those as opus_model / sonnet_model / haiku_model (defaults fall back to the catalog entry's `cli_arg`). Set claude_effort_level only if you rely on Claude Code's effort knobs (otherwise omit).",
+    "example_codex": { "base_url": "https://api.openai.com/v1", "api_key": "sk-..." },
+    "example_claude_shim": {
+      "base_url": "https://api.deepseek.com/anthropic",
+      "api_key": "sk-...",
+      "opus_model": "deepseek-v4-pro[1m]",
+      "sonnet_model": "deepseek-v4-pro[1m]",
+      "haiku_model": "deepseek-v4-flash",
+      "claude_effort_level": "max"
+    }
   },
   "pricing_notes": [
     "All pricing values are USD per 1M tokens.",
