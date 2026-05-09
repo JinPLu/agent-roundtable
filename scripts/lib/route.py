@@ -4,7 +4,7 @@
 Starts from role_defaults ordering, filters by actor availability,
 then applies optional signals to reorder/filter candidates.
 """
-import argparse, json, os, pathlib, shutil, subprocess
+import argparse, json, os, pathlib, shutil, subprocess, sys
 
 _SKILL_DIR = pathlib.Path(__file__).resolve().parents[2]
 # Prefer the user's gitignored models.json; fall back to the shipped example
@@ -12,13 +12,10 @@ _SKILL_DIR = pathlib.Path(__file__).resolve().parents[2]
 REGISTRY = _SKILL_DIR / "models.json"
 if not REGISTRY.exists():
     REGISTRY = _SKILL_DIR / "models.example.json"
-FALLBACKS = {
-    "planner": ["gpt-5.5", "claude-opus"],
-    "executor": ["gpt-5.5", "claude-opus"],
-    "reviewer": ["gpt-5.5", "claude-opus", "cursor-claude-4.7-opus"],
-    "devils-advocate": ["claude-opus", "gpt-5.5"],
-    "discussant": ["gpt-5.5", "claude-opus"],
-}
+
+# No hardcoded fallbacks — the registry's role_defaults is the source of truth.
+# When a role has no aliases registered, route_for_role() warns and returns [].
+FALLBACKS: dict[str, list[str]] = {}
 
 
 def ok(cmd, needle=None):
@@ -134,7 +131,12 @@ def recommend(
     available = detect_actors(cursor_subagent)
     aliases = registry.get("role_defaults", {}).get(role) or FALLBACKS.get(role)
     if not aliases:
-        raise SystemExit(f"unknown role: {role}")
+        print(
+            f"WARNING: no aliases registered for role {role!r} in role_defaults; "
+            f"pass -m explicitly",
+            file=sys.stderr,
+        )
+        aliases = []
 
     all_rows = []
     for alias in aliases:
@@ -163,7 +165,6 @@ def recommend(
         if m and m.get("actor") in available:
             companion_row = {"alias": companion, **m}
         else:
-            import sys
             print(
                 f"WARN: --companion {companion!r} not found or unavailable; skipping",
                 file=sys.stderr,

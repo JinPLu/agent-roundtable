@@ -39,12 +39,6 @@
 
 **No.** Deterministic prompt assembly improves cache stability and reproducibility. An LLM assembling its own prompt from scratch would be non-reproducible and token-wasteful. The critical pieces to keep: `emit_done` contract, secret-free logging, git root detection.
 
-### Known bug
-
-`resolve_model` calls `.get(actor)` on `role_defaults[role]`, but `models.json` stores `role_defaults` values as **arrays** (`["alias1", "alias2"]`), not dicts. Calling any turn script without `-m`/`--model` raises `AttributeError`. Workaround: always pass `-m MODEL` explicitly.
-
-**Fix needed:** Change `resolve_model` to: for the given role's array, find the first alias whose `models[alias].actor == actor`.
-
 ---
 
 ## `codex_turn.sh`
@@ -53,7 +47,7 @@
 
 1. Parse args (`--role`, `-m`, `--effort`, `--sandbox`, `--blind`, `--worktree`, `--addendum`, `--timeout-s`)
 2. Validate addendum file readable
-3. Call `resolve_model` if no `-m` (currently broken — see above; pass `-m` explicitly)
+3. Call `resolve_model` if no `-m` (resolves first alias in `role_defaults[role]` whose `actor` matches `codex`)
 4. Set sandbox default (`workspace-write`)
 5. Create `history/codex/<timestamp>/` directory
 6. Optional: create or switch to git worktree
@@ -89,7 +83,7 @@ Subprocess isolation, deterministic `ROUNDTABLE_DONE` signal, API key loading fr
 Similar to `codex_turn.sh` with Claude-specific differences:
 
 1. Parse args (same structure + `--bare`, `--allowed-tools`, `--permission-mode`)
-2. `resolve_model` (same bug — pass `-m` explicitly)
+2. `resolve_model` (resolves first alias in `role_defaults[role]` whose `actor` matches `claude`)
 3. Set `permission-mode` default by role:
    - reviewer / devils-advocate: `plan` (no edits)
    - others: `default`
@@ -185,15 +179,13 @@ Hard-coded: slug regex `^[a-z0-9][a-z0-9-]*$`. Flexible: root via `ROUNDTABLE_RO
 
 ## `append_turn.sh`
 
-Lands a Cursor subagent's five-part output into the thread. Steps:
-1. Validate five-part body structure
+Lands a Cursor subagent's five-part turn body into the thread. Steps:
+1. Validate five-part turn body structure
 2. Copy to `history/cursor/<ts>/last.md`
 3. Append to `THREAD.md`
-4. Extract verdict JSON — **only for `reviewer` and `reviewer-aggregator`** (gap: `devils-advocate` missing)
+4. Extract verdict JSON for `reviewer`, `reviewer-aggregator`, and `devils-advocate`
 5. Patch token count in `meta.json`
 6. `emit_done`
-
-**Fix needed:** Add `devils-advocate` to the role check in step 4 and to `--help` role list.
 
 ---
 

@@ -21,6 +21,8 @@ OpenReview mxBmj5LYU2).
 
 # Mandate
 
+See [_independence_rule.md](_independence_rule.md) for the baseline rule. Adversarial expansion below.
+
 1. **Independently** verify against `GOAL.md` acceptance criteria by reading source files
    and running commands yourself. Do NOT trust ANY other agent's claims — not the
    executor's self-reported outcomes, not a prior reviewer's verdicts.
@@ -43,7 +45,7 @@ OpenReview mxBmj5LYU2).
 # Output format (mandatory)
 
 Your final assistant message MUST start directly with `**Read**:` and contain ONLY the
-five-part body — no preamble, no closing remarks, no `## Turn N` header. Five parts:
+five-part turn body — no preamble, no closing remarks, no `## Turn N` header. Five parts:
 
 - **Read**: list every file you actually opened, by absolute path + line range.
 - **Did**: bullet list of adversarial checks performed.

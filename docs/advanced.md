@@ -27,7 +27,7 @@ route.sh --role reviewer --budget premium --json      # sort by benchmark score,
 
 When `route.sh` recommends a `cursor-subagent` actor, the chat parent (not a shell script) does the work:
 
-1. Note the recommended `cli_arg` (e.g. `claude-opus-4-7-thinking-xhigh`).
+1. Note the recommended `cli_arg` (e.g. `claude-opus-4-7-thinking-high`).
 2. Invoke the `Task` tool with the matching `subagent_type` (`generalPurpose`, `explore`, `gsd-*`, `code-reviewer`, …) and that `model`. The prompt MUST instruct the subagent to produce the standard 5-part turn body as its **final assistant message**.
 3. Capture the Task output to a local file (e.g. `/tmp/turn-body.md`).
 4. Append it via `scripts/append_turn.sh <slug> --actor cursor-subagent --role <role> --model <alias> --task-subagent-type <type> --body-file /tmp/turn-body.md --prompt-file /tmp/prompt.md` (with optional `--tokens-in/-out --duration-s`).
@@ -77,8 +77,8 @@ For "iterate to convergence" / "loop until done": after one initial user confirm
 **Do NOT use `nohup ... &`.** Run the script directly so the shell blocks until it finishes:
 
 ```bash
-bash scripts/codex_turn.sh  my-thread --role executor -m gpt-5.5  [block_until_ms: 1800000]
-bash scripts/claude_turn.sh my-thread --role reviewer --model opus [block_until_ms: 1800000]
+bash scripts/codex_turn.sh  my-thread --role executor -m <your-codex-alias>  [block_until_ms: 1800000]
+bash scripts/claude_turn.sh my-thread --role reviewer --model <your-claude-alias> [block_until_ms: 1800000]
 ```
 
 If the script finishes before `block_until_ms` the Shell tool returns with `ROUNDTABLE_DONE:` in the output. If it takes longer the Shell is backgrounded — use `AwaitShell --pattern "ROUNDTABLE_DONE:"` to wait.
@@ -97,11 +97,10 @@ Every turn script emits **two completion signals**:
 - **Tool whitelisting (claude)**: `--allowed-tools` fully replaces both allowlist and disallowlist.
 - **Goal bridge (codex only)**: executor turns inject a `/goal bridge` addendum that hooks into codex's `get_goal`/`create_goal`/`update_goal` tools. Claude Code does not have goal tools — the bridge is codex-exclusive.
 
-## Known sharp edges (additional)
+## Known sharp edges
 
-3. **`claude-opus`/`claude-sonnet` aliases ≠ Anthropic.** They route to DeepSeek-V4-Pro via Anthropic-compat endpoint.
-4. **Cursor `Task` latency is unbounded.** Pool throttling can queue 10+ min. Prefer CLI when wallclock matters.
-5. **Addendum/body files must be under workspace root**, not `/tmp/` (Cursor's subprocess `/tmp` is isolated).
+1. **Cursor `Task` latency is unbounded.** Pool throttling can queue 10+ min. Prefer CLI when wallclock matters.
+2. **Addendum/body files must be under workspace root**, not `/tmp/` (Cursor's subprocess `/tmp` is isolated).
 
 ## Evidence — when multi-agent helps
 

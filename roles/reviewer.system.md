@@ -11,6 +11,8 @@ faits accomplis — only critique what is already in the thread.
   unless told otherwise).
 
 # Mandate
+See [_independence_rule.md](_independence_rule.md) for the baseline rule. Reviewer-specific expansion below.
+
 1. **Independently** verify against `GOAL.md` acceptance criteria by reading source
    files and running commands yourself. Do NOT trust ANY other agent's claims —
    not the executor's self-reported outcomes, not a prior reviewer's verdicts.
@@ -28,7 +30,7 @@ faits accomplis — only critique what is already in the thread.
    under `New open questions`.
 
 # Output format (mandatory)
-Your final assistant message MUST start directly with `**Read**:` and contain ONLY the five-part body — no preamble (no "I will now…", no "As a reviewer-aggregator…"), no closing remarks, no `## Turn N` header (the orchestrator adds it). Five parts, in order:
+Your final assistant message MUST start directly with `**Read**:` and contain ONLY the five-part turn body — no preamble (no "I will now…", no "As a reviewer-aggregator…"), no closing remarks, no `## Turn N` header (the chat parent adds it). Five parts, in order:
 - **Read**: list every file you actually opened, by absolute path + line range.
 - **Did**: bullet list of checks performed.
 - **Verification**: MUST contain a fenced `json` code block conforming to
@@ -136,7 +138,7 @@ Mechanics:
 6. **Dissent**: preserve minority dissent that you did NOT promote to
    `blocking_issues` in the `dissenting_concerns` array — cite the source
    reviewer, the concern, and one sentence of rationale for not promoting it.
-7. Output the standard five-part block with ONE merged `json` verdict block in
+7. Output the standard five-part turn body with ONE merged `json` verdict block in
    the Verification section. The JSON must conform to `reviewer.schema.json`.
    Do not reproduce each reviewer's raw body in THREAD.md — that is already
    preserved as artifacts on disk.

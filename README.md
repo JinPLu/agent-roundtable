@@ -25,13 +25,13 @@ $SKILL/scripts/new_thread.sh my-review "Audit auth module for security issues"
 $SKILL/scripts/route.sh --role planner --budget cheap
 
 # 4. Dispatch turns
-$SKILL/scripts/claude_turn.sh my-review --role planner --model opus \
+$SKILL/scripts/claude_turn.sh my-review --role planner --model claude-4.7-opus \
   --addendum "Output artifacts/plan.md with concrete fixes."
 
 $SKILL/scripts/codex_turn.sh my-review --role executor --effort high \
   --addendum "Implement the plan; run pytest."
 
-$SKILL/scripts/claude_turn.sh my-review --role reviewer --model opus --bare \
+$SKILL/scripts/claude_turn.sh my-review --role reviewer --model claude-4.7-opus --bare \
   --addendum "Review against GOAL.md acceptance criteria."
 
 # 5. Compact long threads

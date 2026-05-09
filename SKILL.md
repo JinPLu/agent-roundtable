@@ -120,7 +120,7 @@ For complex goals, run this four-phase loop:
 3. **Single writer per path**: parallel turns need disjoint file ownership or read-only roles.
 4. **No agent recursion**: only the user and chat parent orchestrate. Agents must not invoke other agents.
 5. **Self-contained prompts**: each turn script injects context fresh (THREAD.md tail + GOAL.md + role guidelines + addendum). Agents see no chat history.
-6. **Structured verdict**: reviewer turns produce JSON per `roles/reviewer.schema.json`. "Looks good" is not a review.
+6. **Structured verdict**: reviewer turns produce JSON per [`roles/reviewer.schema.json`](roles/reviewer.schema.json). "Looks good" is not a review.
 7. **Cross-vendor review**: parallel reviewers must come from different actor families.
 8. **English on disk**: all artifacts in English.
 

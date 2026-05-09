@@ -222,10 +222,10 @@ build_prompt() {
 
   {
     # ── 1. STABLE PREFIX ────────────────────────────────────────────────────
+    # The independence rule lives in roles/_independence_rule.md and is included
+    # by every role system prompt (single source of truth — do NOT re-embed it
+    # here, or it ships into every Claude turn twice via --append-system-prompt).
     printf '# Roundtable conventions\n\n'
-    printf 'Multi-agent thread. Ground truth is the repository and GOAL.md — read\n'
-    printf 'source files and run commands to verify facts. THREAD.md is a turn log\n'
-    printf '(context), not evidence; do not trust prior agents'\''s summaries at face value.\n\n'
 
     # Auto-skip when role system prompt exists (it already includes the format spec).
     local _skip_disc="${ROUNDTABLE_SKIP_DISCIPLINE:-0}"
@@ -235,7 +235,7 @@ build_prompt() {
     fi
     if [[ "$_skip_disc" != "1" ]]; then
       printf '**Output discipline**: your **final message** MUST be ONLY the five-part turn body '
-      printf '(no preamble, no closing remarks — the orchestrator appends it verbatim to THREAD.md):\n'
+      printf '(no preamble, no closing remarks — the chat parent appends it verbatim to THREAD.md):\n'
       printf '`**Read** / **Did** / **Verification** / **Open questions** / **Hand-off**`\n'
       printf 'Artifacts → `%s/artifacts/`. All on-disk text → **English**.\n\n' "$thread_dir"
     fi
