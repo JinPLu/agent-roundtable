@@ -90,27 +90,46 @@ Cursor agent 会执行 `backend.sh apply`：把 endpoint 写进本地 `.codex_en
 
 ### 第 6 步：为项目造 agent 上下文（每个项目做一次）
 
-Claude CLI 和 Codex CLI 启动时会自动加载项目根的两个上下文文件：
+Agent CLI 启动时会自动加载项目根的上下文文件——没这些文件，agent 每轮要重新探索"项目是什么、源码在哪、规范是什么"，浪费 token + 容易瞎猜。**有了它们，agent 一上来就是满血状态。**
 
-- `CLAUDE.md` —— Claude Code 自动读取
-- `AGENTS.md` —— Codex CLI 自动读取
+**两个文件名，不同工具读不同的**（这是关键，**不能只造一个**）：
 
-没有这两个文件，agent 就得每轮重新探索"这个项目是什么、源码在哪、规范是什么"——浪费 token、效率低、容易瞎猜。**有这两个文件，agent 一上来就是满血状态。**
+| 文件 | 谁原生读取 |
+|------|-----------|
+| `AGENTS.md` | Codex CLI、Cursor、GitHub Copilot、Gemini CLI、25+ 其他 agent 工具（Linux Foundation 标准） |
+| `CLAUDE.md` | Claude Code CLI（**不会**直接读 bare `AGENTS.md`） |
+
+**Anthropic 官方推荐模式（二者非纯重复）：**
+
+- **`AGENTS.md`** = 跨平台真值，写**所有 agent 都需要的**项目信息：build/test 命令、目录结构、规范、PR 规则、通用约束、常见陷阱。
+- **`CLAUDE.md`** = 薄覆盖层（约 20–50 行），第一行 `@AGENTS.md` 导入跨平台内容，下方写 **Claude Code 专属**规则（plan 模式偏好、sub-agent 委派习惯、slash command 行为、anything that names a Claude Code feature）。
+
+```markdown
+# CLAUDE.md（薄覆盖层示例）
+@AGENTS.md
+
+## Claude Code 专属
+- 默认用 plan 模式做 review-style 任务
+- 写完文件后自动跑 pytest 验证
+- 不要主动建 sub-agent；roundtable 协议外不要 dispatch 其他 agent
+```
 
 **怎么生成**：在 Cursor 里告诉 agent：
 
-> **「用 agent-roundtable，dispatch 一个 cursor-claude-4.7-opus subagent 给我项目造 CLAUDE.md，描述项目结构、关键文件、规范、常见陷阱」**
+> **「用 agent-roundtable，dispatch 一个 cursor-claude-4.7-opus subagent 给我项目造 AGENTS.md，描述项目结构、关键文件、规范、常见陷阱。然后造一份薄 CLAUDE.md 用 `@AGENTS.md` 导入。」**
 
-Cursor agent 会派一个高能力 subagent（推荐 Opus 4.7 thinking-high）扫项目目录、读 `.planning/` / `README` / 关键源码后写出一份 ~120-200 行的 `CLAUDE.md` 落到项目根。
+Cursor agent 会扫项目目录、读 `.planning/` / `README` / 关键源码后产出一份 ~120-200 行的 `AGENTS.md` + 一份 ~20-50 行的 `CLAUDE.md`。
 
-**两份内容相同 → symlink 即可**（避免漂移）：
+**简化方案（项目无 Claude 专属规则时）**：用 symlink，单一真值：
 
 ```bash
 cd /your/project
-ln -s CLAUDE.md AGENTS.md
+ln -s AGENTS.md CLAUDE.md       # AGENTS.md 是源，CLAUDE.md 跟随
 ```
 
-> 项目变化大（重构、加了新模块）时，重新 dispatch 一次刷新 CLAUDE.md。
+> 缺点：失去添加 Claude 专属覆盖的能力。仅适用于跨平台规则就够用的简单项目。
+
+> 项目重构/加新模块后，重新 dispatch 一次刷新 AGENTS.md。CLAUDE.md（如果是覆盖层）通常不用动。
 
 ---
 
