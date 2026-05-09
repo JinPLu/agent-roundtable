@@ -1,12 +1,21 @@
 {
-  "version": 6,
-  "description": "Model registry for agent-roundtable. Per-model capability data enables signal-based routing in route.py.",
+  "version": 7,
+  "description": "Model registry for agent-roundtable. The user copies this file to models.json (gitignored), adds `endpoint: {base_url, api_key}` to whichever model entries they actually have credentials for, sets `active.{codex,claude}` to the model id they want each actor to use, and runs `scripts/backend.sh apply`. Per-model capability data drives signal-based routing in route.py; per-model endpoint data drives backend.sh.",
   "last_reviewed": "2026-05-09",
   "currency": "USD",
+  "active": {
+    "codex": null,
+    "claude": null,
+    "_doc": "Set each actor to a model id from the `models` block. That model's `endpoint` is written to .codex_env.local / .claude_env.local. Leave null to skip an actor (its CLI will fall back to its own login)."
+  },
+  "endpoint_schema": {
+    "_doc": "Add this block to any model entry to make it credential-able. base_url has no trailing slash. api_key is treated as a secret — chmod 600 on models.json is recommended.",
+    "example": { "base_url": "https://api.openai.com/v1", "api_key": "sk-..." }
+  },
   "pricing_notes": [
     "All pricing values are USD per 1M tokens.",
-    "codex models route through cialloapi; claude aliases route through DeepSeek via an Anthropic-compatible endpoint.",
-    "cursor-subagent entries use Cursor Task models; their cli_arg is the Cursor model slug."
+    "Catalog entries below are examples shipped with the skill — replace, edit, or extend freely. Other users will have completely different model lists.",
+    "cursor-subagent entries use Cursor Task models; their cli_arg is the Cursor model slug and they do not need an endpoint block (the Cursor IDE handles auth)."
   ],
   "models": {
     "gpt-5.5": {

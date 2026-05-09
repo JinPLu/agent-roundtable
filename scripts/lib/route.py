@@ -6,7 +6,12 @@ then applies optional signals to reorder/filter candidates.
 """
 import argparse, json, os, pathlib, shutil, subprocess
 
-REGISTRY = pathlib.Path(__file__).resolve().parents[2] / "models.json"
+_SKILL_DIR = pathlib.Path(__file__).resolve().parents[2]
+# Prefer the user's gitignored models.json; fall back to the shipped example
+# catalog so route.sh works on a fresh clone before `backend.sh init`.
+REGISTRY = _SKILL_DIR / "models.json"
+if not REGISTRY.exists():
+    REGISTRY = _SKILL_DIR / "models.example.json"
 FALLBACKS = {
     "planner": ["gpt-5.5", "claude-opus"],
     "executor": ["gpt-5.5", "claude-opus"],

@@ -1,6 +1,6 @@
 ---
 name: agent-roundtable
-description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. On first invocation runs a file-based wizard (user edits one chmod-600 template, agent reads non-secret fields, WebSearches each model, writes the .local env files, shreds the template) to configure each actor's API endpoint, key, and model — then auto-populates models.json with the researched capabilities. The api_key never enters chat history or the agent's context.
+description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. The user's models live in `models.json` (gitignored, chmod 600) — they edit it directly to add their endpoints; the agent reads only the non-secret metadata, WebSearches the user's models for benchmarks/pricing, fills those into `models.json`, and runs `scripts/backend.sh apply` to write the per-actor env files. The api_key never enters chat or the agent's context.
 disable-model-invocation: true
 ---
 
@@ -12,19 +12,26 @@ A thin file-based substrate where participants take turns around a shared on-dis
 
 > **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as "not configured" and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
 
-The wizard is **file-based** — the user fills in a template, the agent reads only the non-secret fields, and the api_key is shredded the moment the `.local` files are written. The key never enters chat history *or* the agent's context window.
+The wizard is **single-file**: everything (catalog + endpoints + active selection) lives in `<SKILL_DIR>/models.json` (gitignored, chmod 600). The user owns that file; the agent reads only the non-secret parts (model ids, providers, base URLs, capability metadata) and never reads or echoes `endpoint.api_key`.
 
-Step-by-step (the agent runs every step except #2 — the user only edits one file):
+Step-by-step (the agent runs every step except #2):
 
-1. **Probe + initialise**: run `scripts/backend.sh show`. If both actors are "not configured", run `scripts/backend.sh wizard-init` to write `<SKILL_DIR>/wizard.in` (chmod 600, gitignored) — a template with `[codex]` and `[claude]` blocks plus a comment block of common preset URLs.
-2. **User edits the file**: tell the user to open `<SKILL_DIR>/wizard.in`, fill in `base_url`, `api_key`, `model` for whichever actor(s) they want, save, and reply `done` (or any acknowledgement). Leave a block's `api_key` blank to skip that actor.
-3. **Peek (non-secret)**: `scripts/backend.sh wizard-peek` — prints `actor=… base_url=… model=… api_key=<set|blank>` per block. The agent reads this output (no api_key in it) to learn which models to research.
-4. **Research capabilities**: call `WebSearch` with each model id + provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If WebSearch returns nothing reliable, ask the user for a docs/pricing URL and `WebFetch` it.
-5. **Apply**: `scripts/backend.sh wizard-apply` — parses `wizard.in`, writes `.codex_env.local` and/or `.claude_env.local` via the same `backend.sh codex/claude` codepaths, prints `APPLIED actor=… base_url=… model=…` lines, then **shreds `wizard.in`**. The agent never reads `wizard.in` directly — only the apply script does, so the api_key doesn't enter the agent's context.
-6. **Update `models.json`**: append (or replace) an entry for each applied model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
-7. **Verify**: `scripts/backend.sh show` (key redacted) + `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` to confirm the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
+1. **Probe + initialise**: run `scripts/backend.sh show`. If `models.json` doesn't exist or `active.{codex,claude}` are both null, run `scripts/backend.sh init` to seed `<SKILL_DIR>/models.json` from `models.example.json` (chmod 600). The example ships a catalog of model entries (gpt-5.5, claude-opus, …) — most users will replace or extend it; that's expected.
 
-The wizard is idempotent — re-running `wizard-init` requires you to first `rm wizard.in`; re-running `wizard-apply` overwrites the `.local` files. Editing `models.json` by hand for benchmark/pricing tweaks is fine and survives re-runs.
+2. **User edits `models.json`**: tell the user to open `<SKILL_DIR>/models.json` and:
+   - Either pick an existing catalog entry that matches a model they have, or add a new one under `models.<id>`. Minimum required fields per entry: `actor` (`codex` or `claude`), `cli_arg` (the model id the CLI sends), and `endpoint: { base_url, api_key }`.
+   - Set `active.codex` and/or `active.claude` to the chosen model ids. Leave either null to skip that actor (its CLI then falls back to its own login).
+   - Save and reply with anything (`done`, `go`, etc.).
+
+3. **Inspect (non-secret)**: `scripts/backend.sh show` — reports per actor: `active.{actor}=<model id>`, `cli_arg`, and a status (`ready` / `base_url only` / `api_key only` / `no endpoint block`). The api_key is never printed; only its presence is. The agent uses this output to decide which models to research.
+
+4. **Research capabilities**: call `WebSearch` with each active model id + provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: `context_window_k`, `max_output_k`, `benchmarks` (SWE-Bench Verified, Terminal-Bench, etc.), `pricing` (per-1M input/output), `best_for` tags, `underlying` (human-readable description). If WebSearch returns nothing reliable, ask the user for a docs URL and `WebFetch` it. Patch those fields directly into the matching `models.<id>` entry in `models.json` (preserve `endpoint`, `actor`, `cli_arg`). Also append the model id to whichever `role_defaults` lists make sense (`executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
+
+5. **Apply**: `scripts/backend.sh apply` — reads `models.json`, walks `active.{codex,claude}`, and writes `.codex_env.local` / `.claude_env.local` (chmod 600) using each active model's `endpoint` block. Prints `APPLIED actor=… model=… base_url=…` lines so the agent has a non-secret record. The api_key is read from `models.json` by the python subprocess inside `apply` and passed to the env file via `printf %q` — it is never echoed to stdout. (For ad-hoc one-off overrides, `backend.sh codex <url> <key> <model>` and `backend.sh claude <url> <key> <model>` still work and bypass `models.json`.)
+
+6. **Verify**: `scripts/backend.sh show` (key redacted in both `models.json` summary and `.local` dumps); then dispatch a 1-line health-check turn per active actor — e.g. `scripts/codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`. Exit 0 with the word `ok` in `last.md` confirms the endpoint actually answers.
+
+The flow is idempotent — re-running `init` is a no-op once `models.json` exists; re-running `apply` overwrites the `.local` files. Editing `models.json` by hand any time (new endpoints, swap active model, tweak benchmarks) and re-running `apply` is the standard switching motion. The catalog grows over time — users with more models just keep adding entries.
 
 ## Architecture — who does what
 
@@ -40,15 +47,21 @@ Any participant can play any role — planner, executor, reviewer, discussant. T
 ## Setup
 
 - **Env**: `ROUNDTABLE_REPO_ROOT` (auto-detected git root), `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`), `ROUNDTABLE_TAIL_K` (recent turns inlined; default `3`).
-- **Backend** (one-shot, switches the underlying model+API for an actor — analogous to `cc-switch`):
+- **Backend (default path — single source of truth in `models.json`):**
+  ```bash
+  scripts/backend.sh init        # seed <SKILL_DIR>/models.json from models.example.json (gitignored, chmod 600)
+  $EDITOR <SKILL_DIR>/models.json   # add `endpoint: {base_url, api_key}` to a model, set `active.{codex,claude}`
+  scripts/backend.sh apply       # write .codex_env.local / .claude_env.local from the active models
+  scripts/backend.sh show        # inspect current state — key never printed, only presence
+  scripts/backend.sh clear codex # remove .codex_env.local → fall back to CLI's own login
+  ```
+- **Backend (escape-hatch, ignores `models.json`):**
   ```bash
   scripts/backend.sh codex  <base-url> <api-key> [default-model]
   scripts/backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model]
-  scripts/backend.sh show              # inspect current config (key redacted)
-  scripts/backend.sh clear codex       # remove override → fall back to CLI's own login
   ```
-  Writes `<SKILL_DIR>/.<actor>_env.local` (chmod 600, gitignored). `{codex,claude}_turn.sh` source it before invoking the CLI. With nothing configured, the CLIs use their own auth (`codex login`, `claude auth login`).
-- **Model registry**: `models.json` is a *hint* layer for `route.sh` (per-model benchmarks, pricing, role defaults). If you switch backends, edit `models.json` to match — or just pass `--model <cli-arg>` explicitly to each turn script and ignore the registry.
+  Useful for ad-hoc overrides without touching `models.json`.
+- **Catalog vs. registry**: `models.example.json` is the shipped catalog (tracked in git). `models.json` is the user's working copy (gitignored, holds keys). `route.sh` and `_common.sh resolve_model` read whichever exists, falling back to the example, so signal-based routing keeps working even before `init`.
 
 ## Thread layout
 
@@ -104,7 +117,7 @@ All under `<SKILL_DIR>/scripts/` and executable.
 | `append_turn.sh <slug>` | Land a Cursor Task subagent's body into `THREAD.md`. | `--actor cursor-subagent`, `--role`, `--model`, `--body-file`, `--prompt-file`, `--tokens-in/-out` |
 | `compact_thread.sh <slug>` | Compact old turns into `THREAD_SUMMARY.md`; keep last K turns in `THREAD.md`. | `--keep K` (default 6), `--dry-run` |
 | `route.sh --role ROLE` | Signal-based routing: rank models by role defaults + task signals. | `--top N`, `--json`, `--cursor-subagent`, `--budget`, `--latency`, `--output-heavy` |
-| `backend.sh <actor> ...` | Point codex / claude actor at any OpenAI / Anthropic-compatible endpoint. | `show`, `clear <actor>`, `wizard-init`, `wizard-peek`, `wizard-apply` |
+| `backend.sh <subcmd>` | Manage per-actor endpoints. Default flow: `init` → user edits `models.json` → `apply`. | `init`, `apply [actor]`, `show [actor]`, `clear <actor>`, `codex/claude <url> <key> <model>` |
 
 ## Role × default sandbox / permission
 

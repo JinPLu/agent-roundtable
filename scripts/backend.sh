@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
 # backend.sh — Point the codex or claude actor at any OpenAI/Anthropic-compatible
-# endpoint. Writes <SKILL_DIR>/.<actor>_env.local (gitignored), which
-# {codex,claude}_turn.sh source before invoking the CLI.
+# endpoint. Reads <SKILL_DIR>/models.json (user-editable, gitignored) and writes
+# <SKILL_DIR>/.<actor>_env.local (chmod 600, gitignored), which {codex,claude}_turn.sh
+# source before invoking the CLI.
 #
 # Usage:
-#   backend.sh codex  <base-url> <api-key> [default-model]
+#   backend.sh init                            # seed models.json from models.example.json (no-op if it already exists)
+#   backend.sh apply [codex|claude]            # read models.json, write .<actor>_env.local for each `active` actor
+#   backend.sh show  [codex|claude]            # inspect current state (api_key redacted)
+#   backend.sh clear <codex|claude>            # remove .<actor>_env.local
+#   backend.sh codex  <base-url> <api-key> [default-model]                     # one-shot direct write (bypasses models.json)
 #   backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model]
-#   backend.sh show   [codex|claude]
-#   backend.sh clear  <codex|claude>
-#   backend.sh wizard-init                    # write fill-in template the user edits
-#   backend.sh wizard-apply                   # read filled template, write .local files, shred template
 #
-# Wizard flow (agent runs these; user only edits the file):
-#   1. backend.sh wizard-init  → creates <SKILL_DIR>/wizard.in (chmod 600, gitignored)
-#   2. user fills in [codex] and/or [claude] blocks, saves the file
-#   3. backend.sh wizard-apply → parses file, calls `codex`/`claude` subcommands per
-#      filled block, prints non-secret metadata (actor / base_url / model) on stdout
-#      so the agent can WebSearch each model, then shreds wizard.in.
-#
-# Examples (direct, non-wizard):
-#   backend.sh codex  https://api.openai.com/v1            sk-...        gpt-4o
-#   backend.sh codex  https://api.cialloapi.cn/v1          sk-...        gpt-5.5
-#   backend.sh claude https://api.anthropic.com            sk-ant-...    claude-opus-4-5
-#   backend.sh claude https://api.deepseek.com/anthropic   sk-...        deepseek-v4-pro[1m]
+# Default flow (file-based, secret never enters chat or agent context):
+#   1. backend.sh init            # creates <SKILL_DIR>/models.json from the example catalog
+#   2. user opens <SKILL_DIR>/models.json in their editor:
+#        - finds (or adds) a model entry under `models.<id>`
+#        - adds `"endpoint": {"base_url": "...", "api_key": "..."}` to that entry
+#        - sets `active.codex` and/or `active.claude` to the model id
+#        - saves
+#   3. backend.sh apply           # writes the .<actor>_env.local files
 
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,34 +32,147 @@ esac
 
 cmd="$1"; shift
 
-_show_one() {
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+_models_file() {
+  local f="${SKILL_DIR}/models.json"
+  if [[ -r "$f" ]]; then echo "$f"; return; fi
+  echo "${SKILL_DIR}/models.example.json"
+}
+
+_show_local() {
   local actor="${1:-}"
   local f="${SKILL_DIR}/.${actor}_env.local"
   if [[ -r "$f" ]]; then
-    printf '── %s (%s) ──\n' "$actor" "$f"
+    printf '── .%s_env.local (%s) ──\n' "$actor" "$f"
     grep -E '^export [A-Z_]+=' "$f" | sed -E 's/(TOKEN|API_KEY)=.*/\1=***redacted***/'
   else
-    printf '── %s: not configured (no %s) ──\n' "$actor" "$f"
+    printf '── .%s_env.local: not configured ──\n' "$actor"
   fi
 }
 
+_show_models_summary() {
+  local mf
+  mf="$(_models_file)"
+  printf '── models.json (%s) ──\n' "$mf"
+  python3 - "$mf" <<'PY'
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+data = json.loads(p.read_text())
+active = data.get("active") or {}
+models = data.get("models") or {}
+for actor in ("codex", "claude"):
+    mid = active.get(actor)
+    if not mid:
+        print(f"  active.{actor}: <not set>")
+        continue
+    m = models.get(mid)
+    if not m:
+        print(f"  active.{actor}: {mid!r} -> ERROR: no such model in `models` block")
+        continue
+    ep = m.get("endpoint") or {}
+    has_base = bool(ep.get("base_url"))
+    has_key = bool(ep.get("api_key"))
+    cli = m.get("cli_arg", mid)
+    status = (
+        "ready" if (has_base and has_key) else
+        ("base_url only — api_key blank" if has_base else
+         ("api_key only — base_url blank" if has_key else "no endpoint block"))
+    )
+    print(f"  active.{actor}: {mid!r}  cli_arg={cli!r}  status={status}")
+ep_count = sum(1 for m in models.values() if isinstance(m, dict) and (m.get("endpoint") or {}).get("api_key"))
+print(f"  catalog: {len(models)} model entries; {ep_count} with credentialed endpoints")
+PY
+}
+
+# ── commands ─────────────────────────────────────────────────────────────────
+
 case "$cmd" in
-  show)
-    if [[ $# -gt 0 ]]; then _show_one "$1"; else _show_one codex; echo; _show_one claude; fi
-    exit 0
+  init)
+    src="${SKILL_DIR}/models.example.json"
+    dst="${SKILL_DIR}/models.json"
+    [[ -r "$src" ]] || { echo "ERROR: $src not found." >&2; exit 2; }
+    if [[ -e "$dst" ]]; then
+      echo "$dst already exists; not overwriting. Edit it directly, or delete it first to reseed."
+      exit 0
+    fi
+    cp "$src" "$dst"
+    chmod 600 "$dst"
+    echo "wrote $dst (chmod 600 — keeps api_keys readable only by you)"
+    echo
+    echo "Next steps:"
+    echo "  1. Open $dst in your editor"
+    echo "  2. Find or add the model entry you'll use, add an \`endpoint\` block:"
+    echo '       "endpoint": { "base_url": "https://...", "api_key": "sk-..." }'
+    echo "  3. Set \`active.codex\` / \`active.claude\` to the model id"
+    echo "  4. Save, then run: $0 apply"
     ;;
+
+  show)
+    if [[ "${1:-}" == "codex" || "${1:-}" == "claude" ]]; then
+      _show_local "$1"
+    else
+      _show_models_summary
+      echo
+      _show_local codex
+      echo
+      _show_local claude
+    fi
+    ;;
+
   clear)
     actor="${1:?which actor: codex|claude}"
     rm -f "${SKILL_DIR}/.${actor}_env.local"
     echo "cleared ${SKILL_DIR}/.${actor}_env.local"
-    exit 0
     ;;
+
+  apply)
+    only="${1:-}"
+    mf="${SKILL_DIR}/models.json"
+    [[ -r "$mf" ]] || { echo "ERROR: $mf not found. Run: $0 init" >&2; exit 2; }
+    python3 - "$mf" "$0" "$only" <<'PY'
+import json, sys, subprocess, pathlib
+mf, script, only = sys.argv[1], sys.argv[2], sys.argv[3]
+data = json.loads(pathlib.Path(mf).read_text())
+active = data.get("active") or {}
+models = data.get("models") or {}
+targets = [only] if only else ["codex", "claude"]
+applied = 0
+for actor in targets:
+    if actor not in ("codex", "claude"):
+        print(f"ERROR: unknown actor {actor!r}", file=sys.stderr); sys.exit(2)
+    mid = active.get(actor)
+    if not mid:
+        print(f"SKIP {actor}: active.{actor} is null in models.json", file=sys.stderr); continue
+    m = models.get(mid)
+    if not m:
+        print(f"ERROR {actor}: active.{actor} = {mid!r} but no such entry in models block", file=sys.stderr); sys.exit(2)
+    declared_actor = m.get("actor")
+    if declared_actor and declared_actor != actor:
+        print(f"WARN  {actor}: model {mid!r} is registered as actor={declared_actor!r}", file=sys.stderr)
+    ep = m.get("endpoint") or {}
+    base, key = ep.get("base_url"), ep.get("api_key")
+    if not base or not key:
+        print(f"SKIP {actor}: model {mid!r} has no endpoint.base_url or api_key set", file=sys.stderr); continue
+    cli_arg = m.get("cli_arg", mid)
+    cmd = [script, actor, base, key, cli_arg]
+    r = subprocess.run(cmd, check=False)
+    if r.returncode != 0:
+        sys.exit(r.returncode)
+    applied += 1
+    print(f"APPLIED actor={actor} model={mid} cli_arg={cli_arg} base_url={base}")
+if applied == 0:
+    print("Nothing applied. Edit models.json: set `active.{codex,claude}` to a model id whose entry has an `endpoint` block with both base_url and api_key.", file=sys.stderr)
+    sys.exit(2)
+PY
+    ;;
+
   codex)
     base_url="${1:?missing base-url}"; api_key="${2:?missing api-key}"
     default_model="${3:-}"
     out="${SKILL_DIR}/.codex_env.local"
     {
-      printf '# Auto-generated by scripts/backend.sh on %s. Edit or rerun to change.\n' "$(date -u +%FT%TZ)"
+      printf '# Auto-generated by scripts/backend.sh on %s.\n' "$(date -u +%FT%TZ)"
       printf 'export OPENAI_BASE_URL=%q\n' "$base_url"
       printf 'export OPENAI_API_KEY=%q\n'  "$api_key"
       [[ -n "$default_model" ]] && printf 'export OPENAI_DEFAULT_MODEL=%q\n' "$default_model"
@@ -70,12 +180,13 @@ case "$cmd" in
     chmod 600 "$out"
     echo "wrote $out (chmod 600)"
     ;;
+
   claude)
     base_url="${1:?missing base-url}"; auth_token="${2:?missing api-key}"
     opus="${3:-}"; sonnet="${4:-${opus}}"; haiku="${5:-${opus}}"
     out="${SKILL_DIR}/.claude_env.local"
     {
-      printf '# Auto-generated by scripts/backend.sh on %s. Edit or rerun to change.\n' "$(date -u +%FT%TZ)"
+      printf '# Auto-generated by scripts/backend.sh on %s.\n' "$(date -u +%FT%TZ)"
       printf 'export ANTHROPIC_BASE_URL=%q\n'   "$base_url"
       printf 'export ANTHROPIC_AUTH_TOKEN=%q\n' "$auth_token"
       if [[ -n "$opus" ]]; then
@@ -89,101 +200,7 @@ case "$cmd" in
     chmod 600 "$out"
     echo "wrote $out (chmod 600)"
     ;;
-  wizard-init)
-    out="${SKILL_DIR}/wizard.in"
-    if [[ -e "$out" ]]; then
-      echo "ERROR: $out already exists. Edit it directly, or 'rm $out' to start over." >&2
-      exit 2
-    fi
-    cat > "$out" <<'TPL'
-# agent-roundtable wizard input — fill in, save, then run `backend.sh wizard-apply`
-# (or just tell the agent "done"). The agent will:
-#   - read THIS file's non-secret fields (actor, base_url, model) for WebSearch
-#   - call backend.sh wizard-apply, which writes .codex_env.local / .claude_env.local
-#     and then SHREDS this file so the api_key doesn't linger on disk.
-#
-# Lines starting with `#` are ignored. Leave api_key blank for any actor you want
-# to skip. base_url should NOT have a trailing slash.
-#
-# Common preset URLs (paste into base_url to use):
-#   OpenAI            https://api.openai.com/v1
-#   Anthropic         https://api.anthropic.com
-#   cialloapi         https://api.cialloapi.cn/v1
-#   DeepSeek-compat   https://api.deepseek.com/anthropic
-#   Azure OpenAI      https://<resource>.openai.azure.com/openai/v1
 
-[codex]
-base_url:
-api_key:
-model:
-
-[claude]
-base_url:
-api_key:
-model:
-TPL
-    chmod 600 "$out"
-    echo "wrote $out (chmod 600)"
-    echo "Edit it (e.g. open in your editor), save, then run: $0 wizard-apply"
-    ;;
-  wizard-peek)
-    in="${SKILL_DIR}/wizard.in"
-    [[ -r "$in" ]] || { echo "ERROR: $in not found. Run '$0 wizard-init' first." >&2; exit 2; }
-    python3 - "$in" <<'PY'
-import re, sys, pathlib
-text = pathlib.Path(sys.argv[1]).read_text()
-section = None
-sections = {}
-for line in text.splitlines():
-    s = line.strip()
-    if not s or s.startswith('#'): continue
-    m = re.match(r'\[(\w+)\]\s*$', s)
-    if m: section = m.group(1); sections[section] = {}; continue
-    if section and ':' in s:
-        k, _, v = s.partition(':')
-        sections[section][k.strip()] = v.strip()
-for actor in ('codex', 'claude'):
-    kv = sections.get(actor, {})
-    has_key = bool(kv.get('api_key'))
-    print(f"actor={actor} base_url={kv.get('base_url','')!r} model={kv.get('model','')!r} api_key={'<set>' if has_key else '<blank>'}")
-PY
-    ;;
-  wizard-apply)
-    in="${SKILL_DIR}/wizard.in"
-    [[ -r "$in" ]] || { echo "ERROR: $in not found. Run '$0 wizard-init' first." >&2; exit 2; }
-    python3 - "$in" "$0" <<'PY'
-import re, sys, subprocess, pathlib
-inp, script = sys.argv[1], sys.argv[2]
-text = pathlib.Path(inp).read_text()
-section, sections = None, {}
-for line in text.splitlines():
-    s = line.strip()
-    if not s or s.startswith('#'): continue
-    m = re.match(r'\[(\w+)\]\s*$', s)
-    if m: section = m.group(1); sections[section] = {}; continue
-    if section and ':' in s:
-        k, _, v = s.partition(':')
-        sections[section][k.strip()] = v.strip()
-applied = []
-for actor in ('codex', 'claude'):
-    kv = sections.get(actor, {})
-    base, key, model = kv.get('base_url',''), kv.get('api_key',''), kv.get('model','')
-    if not key: continue
-    if not base: print(f"SKIP {actor}: api_key set but base_url blank", file=sys.stderr); continue
-    cmd = [script, actor, base, key, model] if model else [script, actor, base, key]
-    r = subprocess.run(cmd, check=False)
-    if r.returncode != 0: sys.exit(r.returncode)
-    applied.append((actor, base, model))
-    print(f"APPLIED actor={actor} base_url={base} model={model}")
-if not applied:
-    print("No actor blocks had a non-empty api_key; nothing applied.", file=sys.stderr); sys.exit(2)
-PY
-    if command -v shred >/dev/null 2>&1; then
-      shred -u "$in" 2>/dev/null && echo "shredded $in"
-    else
-      rm -f "$in" && echo "removed $in (shred unavailable)"
-    fi
-    ;;
   *)
     echo "unknown command: $cmd" >&2
     _usage >&2

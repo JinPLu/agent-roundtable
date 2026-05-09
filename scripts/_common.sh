@@ -306,6 +306,9 @@ PY
 resolve_model() {
   local actor="$1" role="$2" model_override="${3:-}" effort_override="${4:-}"
   local registry="${SKILL_DIR}/models.json"
+  # Fall back to the shipped example catalog if the user hasn't run
+  # `backend.sh init` yet — keeps routing-hint defaults working out of the box.
+  [[ -f "$registry" ]] || registry="${SKILL_DIR}/models.example.json"
   if [[ ! -f "$registry" ]] || ! command -v python3 >/dev/null 2>&1; then
     printf 'model=%s\neffort=%s\n' "$model_override" "${effort_override:-medium}"
     return
