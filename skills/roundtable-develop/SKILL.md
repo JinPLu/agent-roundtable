@@ -1,32 +1,87 @@
 ---
 name: roundtable-develop
-description: Implement complex features or refactors using the full quality loop (Plan -> Execute -> Parallel Review -> Aggregate). Use when the user asks to develop a feature, refactor code, or implement a complex task using agent-roundtable.
+description: Use when implementing a feature, refactoring, or running the full quality loop (plan → execute → parallel blind review → aggregate → loop) on a non-trivial change with cross-vendor verification.
 ---
 
 # Roundtable Develop
 
-This skill encapsulates the "Full Quality Loop" mode of `agent-roundtable`.
+The full quality loop. A `planner` writes `artifacts/plan.md`, an `executor` implements it, two cross-vendor reviewers (`reviewer` + `devils-advocate`, both `--blind`) verify, a `reviewer-aggregator` produces the merged verdict, and the loop iterates until the stop condition is met. Every turn is appended to `THREAD.md` with full audit trail.
 
-## Workflow
+## Use when
 
-When the user asks to implement a feature:
+- Multi-file feature work or refactor where you want a paper trail.
+- High-risk changes (security, schema migrations, build-system overhauls) where one-shot execution is too risky.
+- The user explicitly asks for "the quality loop" / "convergence loop" / "full roundtable".
+- Prior single-actor execution stalled or produced inconsistent results.
 
-1. **Phase 1: Plan**
-   - Dispatch a `planner` agent to break down the task and create a plan in `artifacts/plan.md`.
-   - Wait for completion.
-2. **Phase 2: Execute**
-   - Dispatch an `executor` agent to implement the plan.
-   - Wait for completion.
-3. **Phase 3: Parallel Review**
-   - Dispatch at least TWO parallel reviewers (e.g., `reviewer` and `devils-advocate`) from different vendors with the `--blind` flag.
-   - Wait for both to complete.
-4. **Phase 4: Aggregate**
-   - Dispatch a `reviewer-aggregator` to evaluate the reviews.
-5. **Evaluate Stop Condition**:
-   - If the aggregator reports `BLOCKER`s or >1 objections, loop back to Phase 2 (Execute) to fix the issues.
-   - If 0 BLOCKERs and ≤1 objection, the loop is complete. Report success to the user.
+## Don't use when
 
-## Rules
-- Always use the mandatory dispatch confirmation block before starting the loop.
-- You do not need to ask for confirmation between phases of the loop unless a phase fails catastrophically.
-- Ensure `ROUNDTABLE_PROJECT_ROOT` is set correctly.
+- A one-line fix or a trivial rename — the loop overhead dominates the work. Use a single `executor` turn or just edit directly.
+- The user wants to ship fast and accepts the quality risk — surface that trade-off and let them choose. Consider `superpowers:subagent-driven-development` instead, which has lower review overhead.
+- `models.json` is unconfigured — bounce to `roundtable-init`.
+
+## Why the loop
+
+Three disciplines single-shot execution skips: (1) **plan before code** so reviewers grade against `GOAL.md` not vibes; (2) **cross-vendor blind verification** to catch modal blind spots — see `roundtable-review` for the empirical basis; (3) **convergence-by-evidence** — the aggregator emits `convergence_status` / `next_action_hint` / `evidence_delta_vs_prior_round` so the loop exits on evidence, not on "looks good".
+
+## The process
+
+### Phase 0: confirm dispatch
+
+Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) block from the root SKILL.md once at the start. Subsequent phases inside one accepted run do not need re-confirmation unless a phase fails catastrophically or the user changes scope.
+
+### Phase 1: plan
+
+```
+$SKILL/scripts/codex_turn.sh <slug> --role planner --task "<goal one-liner>"
+```
+
+Wait for completion. The planner produces `artifacts/plan.md` and updates `GOAL.md` with acceptance criteria. Read `GOAL.md` after the turn — if it's still the template, re-dispatch with sharper input.
+
+### Phase 2: execute
+
+```
+$SKILL/scripts/codex_turn.sh <slug> --role executor
+# or claude_turn.sh, depending on the model the user picked for executor
+```
+
+Wait for completion. Inspect `git diff --stat` in the project root. The executor's five-part body is in `THREAD.md`; the actual code change is in the working tree.
+
+### Phase 3: parallel blind review (cross-vendor)
+
+```
+$SKILL/scripts/codex_turn.sh  <slug> --role reviewer        --blind
+$SKILL/scripts/claude_turn.sh <slug> --role devils-advocate --blind
+```
+
+Both must come from different actor families. Both must use `--blind`. Both must finish before Phase 4. (Run concurrently.)
+
+### Phase 4: aggregate
+
+```
+$SKILL/scripts/claude_turn.sh <slug> --role reviewer-aggregator \
+  --task "Round N convergence verdict; emit convergence_status."
+```
+
+The aggregator's `verdict.json` carries the loop-control signal.
+
+### Phase 5: evaluate stop condition
+
+Read the aggregator's `verdict.json`:
+
+- **Stop and report success** if `blocking_issues` has 0 BLOCKERs **and** `acceptance` shows ≤1 PARTIAL/MISSING/VERIFICATION-NOT-EVIDENCED **and** `convergence_status` is `converged` or `progressing → accept-and-stop`.
+- **Loop back to Phase 2** otherwise. Pass the aggregator's `next_action_hint` into the executor's `--task` so it knows what to fix.
+- **Escalate to user** if `convergence_status` is `stalled` for two consecutive rounds, or `regressed`. Loops that don't converge are a planner / model-capability problem, not an executor effort problem; surface this rather than burning more rounds.
+
+## Red flags / Stop when
+
+- Three rounds without a `converged` or `accept-and-stop` signal — escalate. Either the plan is wrong or the model is under-powered.
+- Executor reports `Hand-off: escalate-to-user` — do not skip; surface immediately.
+- `git diff --stat` shows changes outside `In-scope paths` from `GOAL.md` — scope violation; revert or re-scope before continuing.
+- Reviewer dispatched without `--blind` — verdict is contaminated; re-run that reviewer only.
+
+## Hand off
+
+On convergence, report the final aggregator `verdict.json` path, the commit summary (`git log <thread-start-sha>..HEAD`), and point the user at `superpowers:finishing-a-development-branch` for merge / PR mechanics.
+
+Related: `roundtable-review` (verdict-only, no plan/execute), `superpowers:subagent-driven-development` (fresh-subagent loop, no on-disk audit trail).
