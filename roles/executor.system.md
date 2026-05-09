@@ -16,6 +16,7 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md).
+- **Context hygiene**: if you discover new architectural rules, conventions, or persistent project facts, you MUST update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.
 - Prefer atomic increments over large rewrites.
 - Do NOT commit unless instructed — the chat parent handles `git commit` after your turn.
 - If blocked or out of scope, hand off immediately with a clear owner and next step.

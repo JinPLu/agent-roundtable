@@ -233,6 +233,7 @@ Plan ──▶ Execute ──▶ Reviewer × N (含 1 个 devils-advocate, 全 b
 - ✅ **可重放**：thread 在你项目内（`<project>/.roundtable/`），跟代码一起 commit/分享
 - ✅ **agent 满血探索**：默认全工具开放（WebSearch、WebFetch、Bash、Read、Write），只屏蔽真正破坏性的 git 操作
 - ✅ **每次 dispatch 你都有否决权**：Cursor agent 不会偷偷跑 turn，每次都会先问你确认
+- ✅ **上下文卫生 (Context Hygiene)**：强制要求 agent 及时将新发现的架构规则或项目事实更新到 `AGENTS.md` / `CLAUDE.md` 和 `.planning/` 中，防止后续计划跑偏
 
 ---
 

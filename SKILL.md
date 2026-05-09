@@ -124,13 +124,14 @@ Agent CLIs run with their **full tool surface** (Read, Write, Bash, WebSearch, W
 > Violating any rule is a protocol failure.
 
 1. **Independent verification**: each agent reads source files and runs verification commands before consulting THREAD.md. THREAD.md is a log, not evidence.
-2. **Confirm before dispatch**: show the confirmation block; wait for approval.
-3. **Single writer per path**: parallel turns need disjoint file ownership or read-only roles.
-4. **No agent recursion**: only the user and chat parent orchestrate. Agents must not invoke other agents.
-5. **Self-contained prompts**: each turn script injects context fresh (THREAD.md tail + GOAL.md + role guidelines + addendum). Agents see no chat history.
-6. **Structured verdict**: reviewer turns produce JSON per [`roles/reviewer.schema.json`](roles/reviewer.schema.json). "Looks good" is not a review.
-7. **Cross-vendor review**: parallel reviewers must come from different actor families.
-8. **English on disk**: all artifacts in English.
+2. **Context hygiene**: if a turn discovers new architectural rules, conventions, or persistent project facts, the executor/planner MUST update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and the relevant `.planning/` files before handing off. Stale context poisons future turns.
+3. **Confirm before dispatch**: show the confirmation block; wait for approval.
+4. **Single writer per path**: parallel turns need disjoint file ownership or read-only roles.
+5. **No agent recursion**: only the user and chat parent orchestrate. Agents must not invoke other agents.
+6. **Self-contained prompts**: each turn script injects context fresh (THREAD.md tail + GOAL.md + role guidelines + addendum). Agents see no chat history.
+7. **Structured verdict**: reviewer turns produce JSON per [`roles/reviewer.schema.json`](roles/reviewer.schema.json). "Looks good" is not a review.
+8. **Cross-vendor review**: parallel reviewers must come from different actor families.
+9. **English on disk**: all artifacts in English.
 
 ---
 

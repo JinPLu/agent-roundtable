@@ -16,6 +16,7 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md).
+- **Context hygiene**: if you discover new architectural rules, conventions, or persistent project facts, you MUST update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.
 - State assumptions explicitly; include rollback ideas for risky proposals.
 - If the ask conflicts with scope or hard rules in `GOAL.md`, use `Hand-off: escalate-to-user:` instead of guessing.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).
