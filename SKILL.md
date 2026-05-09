@@ -1,6 +1,6 @@
 ---
 name: agent-roundtable
-description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread.
+description: Multi-agent collaboration substrate for working with the user, Cursor (chat parent), Codex CLI, and Claude Code as peers around a shared on-disk thread. On first invocation runs an interactive wizard (AskQuestion + WebSearch) to configure each actor's API endpoint, key, and model — then auto-populates models.json with the researched capabilities.
 disable-model-invocation: true
 ---
 
@@ -8,22 +8,48 @@ disable-model-invocation: true
 
 A thin file-based substrate where participants take turns around a shared on-disk thread under `$ROUNDTABLE_ROOT/threads/<slug>/`. Use when two+ CLIs work on one goal or you need a durable on-disk audit trail.
 
+## First-run setup (default flow when this skill is invoked)
+
+> **The chat parent MUST run this wizard the first time the skill is invoked in a workspace** — i.e. whenever `scripts/backend.sh show` reports both actors as "not configured" and the user has not already arranged auth out-of-band. Skip only if the user explicitly says they have working `codex login` / `claude auth login`.
+
+Step-by-step (the agent runs this, not the user):
+
+1. **Probe**: `scripts/backend.sh show` — if both actors print "not configured", continue; otherwise show the current config and ask the user whether to keep, switch, or add the missing actor.
+2. **Pick actor + provider preset** via `AskQuestion`. Two questions in one batch:
+   - *Which actor to configure?* options: `codex` / `claude` / `both`
+   - *Which provider preset?* options: `openai` (`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`), `cialloapi` (`https://api.cialloapi.cn/v1`), `deepseek-anthropic-compat` (`https://api.deepseek.com/anthropic`), `azure-openai`, `custom`
+3. **Collect base URL + API key in chat** (`AskQuestion` is multi-choice only, so the agent asks the user to paste them as a normal chat reply). For known presets the base URL is auto-filled; the user only needs to paste the key. **Never echo the key back; treat it as a secret and write it via `backend.sh` only.**
+4. **Confirm model name** with another `AskQuestion`. Offer 3-5 model-id options known for that provider (e.g. for OpenAI: `gpt-4o`, `gpt-4o-mini`, `gpt-5`, `o1`, `custom`). If `custom`, ask for the exact model id in chat.
+5. **Research capabilities**: call `WebSearch` with the model id and provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If web search returns nothing reliable, ask the user to paste a docs/pricing URL and `WebFetch` it.
+6. **Write the env file**: `scripts/backend.sh <actor> <base-url> <api-key> <model>` (one call per actor configured).
+7. **Update `models.json`**: append (or replace) an entry for the new model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Then add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
+8. **Verify**: `scripts/backend.sh show` redacts the key; `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` confirms the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
+
+The wizard is idempotent — re-running it overwrites the `.local` file and the matching `models.json` entry.
+
 ## Architecture — who does what
 
 | Role | Who |
 |---|---|
 | **Chat parent** | The model running the IDE conversation. **Stays on the main thread; never a dispatch target.** |
 | **Cursor subagent** | Any model available via Cursor's `Task` tool. |
-| **Codex CLI** | gpt-5.5 / gpt-5.4 / gpt-5.4-mini / gpt-5.3-codex via proxy. |
-| **Claude CLI** | DeepSeek-V4-Pro/Flash via DeepSeek API (aliases are CLI-compat shims, NOT Anthropic). |
+| **Codex CLI** | Any OpenAI-compatible endpoint (OpenAI, Azure, cialloapi, local vLLM, …). Set with `scripts/backend.sh codex`. |
+| **Claude CLI** | Any Anthropic-compatible endpoint (Anthropic, DeepSeek-compat, Bedrock-compat, …). Set with `scripts/backend.sh claude`. |
 
 Any participant can play any role — planner, executor, reviewer, discussant. The chat parent decides who plays what (with `route.sh` as a hint) after confirming with the user.
 
 ## Setup
 
 - **Env**: `ROUNDTABLE_REPO_ROOT` (auto-detected git root), `ROUNDTABLE_ROOT` (default `$ROUNDTABLE_REPO_ROOT/.roundtable`), `ROUNDTABLE_TAIL_K` (recent turns inlined; default `3`).
-- **Auth**: run `codex login status` and `claude auth status` once before first use.
-- **Backend override**: copy `<SKILL_DIR>/.<actor>_env.example` → `.<actor>_env.local` (gitignored) to point a CLI at a non-default proxy/key.
+- **Backend** (one-shot, switches the underlying model+API for an actor — analogous to `cc-switch`):
+  ```bash
+  scripts/backend.sh codex  <base-url> <api-key> [default-model]
+  scripts/backend.sh claude <base-url> <api-key> [opus-model] [sonnet-model] [haiku-model]
+  scripts/backend.sh show              # inspect current config (key redacted)
+  scripts/backend.sh clear codex       # remove override → fall back to CLI's own login
+  ```
+  Writes `<SKILL_DIR>/.<actor>_env.local` (chmod 600, gitignored). `{codex,claude}_turn.sh` source it before invoking the CLI. With nothing configured, the CLIs use their own auth (`codex login`, `claude auth login`).
+- **Model registry**: `models.json` is a *hint* layer for `route.sh` (per-model benchmarks, pricing, role defaults). If you switch backends, edit `models.json` to match — or just pass `--model <cli-arg>` explicitly to each turn script and ignore the registry.
 
 ## Thread layout
 
@@ -79,6 +105,7 @@ All under `<SKILL_DIR>/scripts/` and executable.
 | `append_turn.sh <slug>` | Land a Cursor Task subagent's body into `THREAD.md`. | `--actor cursor-subagent`, `--role`, `--model`, `--body-file`, `--prompt-file`, `--tokens-in/-out` |
 | `compact_thread.sh <slug>` | Compact old turns into `THREAD_SUMMARY.md`; keep last K turns in `THREAD.md`. | `--keep K` (default 6), `--dry-run` |
 | `route.sh --role ROLE` | Signal-based routing: rank models by role defaults + task signals. | `--top N`, `--json`, `--cursor-subagent`, `--budget`, `--latency`, `--output-heavy` |
+| `backend.sh <actor> ...` | Point codex / claude actor at any OpenAI / Anthropic-compatible endpoint. | `show`, `clear <actor>` |
 
 ## Role × default sandbox / permission
 
