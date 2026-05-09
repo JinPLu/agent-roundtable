@@ -1,6 +1,8 @@
 # Agent Roundtable
 
-让 **Codex CLI**、**Claude Code CLI**、**Cursor 子 agent** 三类 actor 围绕一份共享的 `THREAD.md` 轮流发言，产生可审计、可回放的协作日志。
+让 **Codex CLI**、**Claude Code CLI**、**Cursor 子 agent** 三种 LLM 围着一份共享文档轮流发言、互相 review，给你一份完整可审计的多智能体协作日志。
+
+> 一个模型容易有盲点（同厂商训练偏置、特定任务薄弱、漏验证）。多个**不同厂商**的 agent 接力 + 互查，能显著降低幻觉、catch 单模型漏掉的方法学问题。研究表明跨厂商盲审能避免 85% 的同源附和率（arXiv 2605.00914）。
 
 ```
    ┌─────────┐    ┌─────────┐    ┌──────────┐
@@ -9,7 +11,6 @@
    └────┬────┘    └────┬────┘    └────┬─────┘
         │              │              │
         └──────────────┼──────────────┘
-                       │
                        ▼
               ┌─────────────────┐
               │   THREAD.md     │  ← 唯一真值，append-only
@@ -17,135 +18,196 @@
               └─────────────────┘
 ```
 
-每轮（turn）按固定 5 段格式追加：**Read** / **Did** / **Verification** / **Open questions** / **Hand-off**。
+---
+
+## 这个 skill 解决什么问题
+
+| 痛点 | 单 agent | Agent Roundtable |
+|------|---------|------------------|
+| 模型盲点 | 同厂商相同盲点 | 跨厂商互补 |
+| 没有审计日志 | 散落聊天里 | 全部进 `THREAD.md` |
+| 验证不严 | 容易"看起来对" | reviewer 必须出结构化 JSON 判决 |
+| review 互相附和 | 同模型互验=回音壁 | `--blind` 模式独立判决 |
+| 改了源码不知道哪个 agent 改的 | — | 每轮 `history/<actor>/<ts>/` 完整保留 |
+
+适合场景：代码 review、复杂功能开发、研究/论文事实核查、协议合规审计。
 
 ---
 
-## 角色（roles/）
+## 安装与配置（10 分钟）
 
-每个 role 对应 `roles/<role>.system.md` 一份系统提示词，决定 agent 的工作目标、写权限、产物形式。
+### 第 1 步：克隆
 
-| 角色 | 干什么 | 写权限 | 必须产出 |
-|------|--------|--------|---------|
-| **planner** | 拆任务、出方案 → `artifacts/plan.md` | 仅 thread 内 | 计划文件 |
-| **executor** | 实现计划、改源码、跑测试 | 项目全部（受沙箱保护） | 改动 + 验证 |
-| **reviewer** | 对实现/方案投结构化判决 | 只读（`plan` 模式） | JSON verdict（内联在 **Verification** 里） |
-| **devils-advocate** | 逆向 reviewer，专挑漏洞，必须 `--blind` | 只读 | 同上，立场对抗 |
-| **reviewer-aggregator** | 看完所有 reviewer 后**选**一个最有理的 verdict（不是综合） | 只读 | 选定的 verdict + 异议记录 |
-| **discussant** | 讨论选项、提疑问、不下结论 | thread 内 | 进入 `OPEN_QUESTIONS.md` |
+```bash
+git clone https://github.com/JinPLu/agent-roundtable.git ~/.cursor/skills/agent-roundtable
+```
 
-> **共享规则**（`roles/_independence_rule.md`）：每个 agent 必须独立读源文件、跑命令验证。`THREAD.md` 是日志不是证据，**不能**只信前面的 agent。
+Cursor 会自动发现 `~/.cursor/skills/` 下的 skill。
+
+### 第 2 步：准备 API key
+
+至少需要一个 LLM 的 API key。支持两类：
+
+- **OpenAI 兼容**（OpenAI 官方 / Azure / 国内代理 / 本地 vLLM 等）→ 给 codex CLI 用
+- **Anthropic 兼容**（Anthropic 官方 / DeepSeek anthropic-compat / Bedrock 等）→ 给 claude CLI 用
+
+如果你用的是 **Cursor 子 agent**（在 Cursor IDE 里 Pro/Pro+/Ultra 订阅自带的模型），不需要 API key。
+
+### 第 3 步：让 skill 给你建配置文件
+
+在 Cursor 里告诉 agent：
+
+> **「跑 agent-roundtable 的初始化」** 或 **「用 /agent-roundtable 配置一下」**
+
+Cursor agent 会执行 `backend.sh init`，给你建一份 `models.json`（chmod 600，gitignored，永不入 git）。
+
+### 第 4 步：填 4 个字段
+
+打开 `~/.cursor/skills/agent-roundtable/models.json`，找你要用的模型，填这 4 个字段：
+
+```json
+"my-model-name": {
+  "actor":   "codex",                                      // codex 或 claude
+  "cli_arg": "gpt-5",                                      // CLI 调用时的模型名
+  "endpoint": {
+    "base_url": "https://api.openai.com/v1",               // 你的 API endpoint
+    "api_key":  "sk-..."                                   // 你的 key
+  }
+}
+```
+
+然后把 `active.codex` 或 `active.claude` 设到这个模型 id 上。
+
+### 第 5 步：让 skill 应用配置
+
+回 Cursor 告诉 agent：「**done**」（或者「应用配置」）。
+
+Cursor agent 会执行 `backend.sh apply`：把 endpoint 写进本地 `.codex_env.local` / `.claude_env.local`（chmod 600），并跑一个 1 行的健康检查 turn 验证 endpoint 通畅。
+
+完成后跑 `backend.sh show` 应该看到 `✅ IMPORTED`。
+
+> **API key 永远不会进聊天记录、不会上 GitHub**。skill 通过文件传 key，agent 只读 endpoint URL 和模型名做调度，从不读 key 本身。
 
 ---
 
-## 四种协作模式
+## 怎么用
+
+你不需要直接调脚本。在 Cursor 里直接对 agent 说话：
+
+### 示例 1：让两个不同厂商的 agent 互相 review 一段代码
+
+> 「用 agent-roundtable 跑跨厂商 review，让 codex 和 claude 各自审一遍 `auth/login.py` 的安全性」
+
+Cursor agent 会：
+1. 创建一个 thread（叫 `auth-login-review-XXX`）
+2. 给你看一个 dispatch confirmation 框：模型选谁、用哪个 effort、估计花多少钱
+3. 等你说 **「GO」** 或者你自己选别的模型
+4. 跑 codex + claude 两个 reviewer 平行（各自 `--blind`）
+5. 把两份 JSON verdict 给你
+
+### 示例 2：让 agent 帮你做完整功能开发
+
+> 「用 agent-roundtable 的 quality 模式，让 planner 先做方案，executor 实现，3 个 reviewer 平行审，最后 aggregator 收尾」
+
+Cursor agent 会按 4 阶段流程跑（见下方 Mode 4），每阶段都会先问你确认。
+
+### 示例 3：单轮快速 review
+
+> 「让 codex 用 gpt-5.5 跑一个 reviewer 检查我刚提交的 commit」
+
+最便宜最快，一个 agent 一轮搞定。
+
+---
+
+## 6 种角色
+
+每个角色对应 `roles/<role>.system.md` 一份系统提示词。Cursor agent 会根据你的任务自动选角色，也可以你指定。
+
+| 角色 | 干什么 | 写权限 | 适合 |
+|------|--------|--------|------|
+| **planner** | 拆任务、出实现方案 | 仅 thread 内 | 复杂任务前先出方案 |
+| **executor** | 改源码、跑测试、提交 | 项目全部（沙箱内） | 实现已确定的方案 |
+| **reviewer** | 投结构化 JSON 判决 | 只读 | 验证实现/方案是否达成 GOAL |
+| **devils-advocate** | 逆向 reviewer，专挑漏洞 | 只读 | 高风险决策前的对抗审 |
+| **reviewer-aggregator** | 看完所有 reviewer 后**选**最有理的判决（不是平均） | 只读 | 多 reviewer 收尾 |
+| **discussant** | 列选项、提问，不下结论 | thread 内 | 设计阶段的开放讨论 |
+
+> **共享规则**（`roles/_independence_rule.md`）：每个 agent 必须**独立读源文件**、跑命令验证。`THREAD.md` 是日志不是证据，**绝不能**只信前面 agent 的总结。
+
+---
+
+## 4 种协作模式
 
 ### Mode 1 — 单轮（最便宜）
 
 ```
-GOAL.md ──▶ [agent] ──▶ THREAD.md
+GOAL ──▶ [agent] ──▶ THREAD.md
 ```
 
-一次对话，一个 agent 干完。适合：快速 review、一次性生成、简单讨论。
+一个 agent 一轮干完。**适合**：快速 review、一次性问答、简单生成。
 
-```bash
-codex_turn.sh my-thread --role discussant -m gpt-5.5 --task "..."
-```
-
-### Mode 2 — 串行链（planner → executor → reviewer）
+### Mode 2 — 串行链
 
 ```
-GOAL.md ──▶ planner ──▶ executor ──▶ reviewer
-                ↓           ↓           ↓
-              THREAD.md  ←───────────────┘
+GOAL ──▶ planner ──▶ executor ──▶ reviewer
+            ↓           ↓           ↓
+            └──────── THREAD.md ────┘
 ```
 
-每一轮读上一轮的输出做下一步。适合：明确的"先方案后实现"功能开发。
+每轮读上一轮的输出做下一步。**适合**：明确的"先方案、后实现、再审计"开发流。
 
-### Mode 3 — 平行 reviewer（跨厂商，反 sycophancy）
+### Mode 3 — 平行 reviewer（跨厂商，反附和）
 
 ```
               ┌──▶ codex/reviewer (--blind)
               │
-executor ─────┼──▶ claude/devils-advocate (--blind)
+   executor ──┼──▶ claude/devils-advocate (--blind)
               │
               └──▶ aggregator ──▶ 选最有理的 verdict
 ```
 
-2–3 个不同厂商的 reviewer 同时跑，每个都 `--blind`（看不到其他人的 verdict）。研究表明同厂商 reviewer 互看会有 85% 盲从率（arXiv 2605.00914），跨厂商 + 盲审能避免。
+2–3 个不同厂商 reviewer 同时跑，每个都 `--blind`（看不到其他人）。aggregator **选**而非综合，避免"和稀泥"。**适合**：高风险决策、关键 review。
 
-### Mode 4 — 全质量回路（4 阶段，最贵）
+### Mode 4 — 全质量回路（最贵但最稳）
 
 ```
-Plan ──▶ Execute ──▶ [Reviewer × N (blind)] ──▶ Aggregate
-                                  ↓
-                       devils-advocate 必含其中
-                                  ↓
-              停止条件：≥1 通过且 0 BLOCKER, ≤1 异议
+Plan ──▶ Execute ──▶ Reviewer × N (含 1 个 devils-advocate, 全 blind)
+                            │
+                            ▼
+                        Aggregate
+                            │
+   停止条件：≥1 通过 + 0 BLOCKER + ≤1 异议
 ```
 
-适合关键决策。详见 `SKILL.md § Quality mode`。
+4 阶段闭环。**适合**：关键功能、合规/安全决策、论文事实核查。
 
 ---
 
-## 快速开始
+## 重要保证
 
-```bash
-# 安装
-git clone https://github.com/JinPLu/agent-roundtable.git ~/.cursor/skills/agent-roundtable
-SKILL=~/.cursor/skills/agent-roundtable
-
-# 一次性配置：填模型 endpoint
-$SKILL/scripts/backend.sh init                    # 拷模板
-# 编辑 $SKILL/models.json，每个模型填 actor / cli_arg / base_url / api_key
-$SKILL/scripts/backend.sh apply                   # 写 .env.local（chmod 600）
-
-# 进项目根目录
-cd /path/to/your/project
-
-# 创线程（自动落在 ./.roundtable/threads/<slug>/）
-$SKILL/scripts/new_thread.sh my-review "审计 auth 模块"
-# 编辑 .roundtable/threads/my-review/GOAL.md
-
-# 调起一轮
-$SKILL/scripts/codex_turn.sh my-review --role planner -m gpt-5.5 --task "..."
-```
-
-`ROUNDTABLE_PROJECT_ROOT` 自动取 caller 的 `git rev-parse --show-toplevel`。线程就在你项目里。
-
----
-
-## 接口（5 个 flag 封顶）
-
-```
-codex_turn.sh / claude_turn.sh <slug> --role ROLE [-m MODEL] [--effort LEVEL] [--task TEXT|--task-file FILE] [--blind]
-```
-
-- `--role`: 上面六个之一
-- `-m`: `models.json` 里的别名
-- `--effort`: `low | medium | high`
-- `--task` 或 `--task-file`: 本轮指令
-- `--blind`: 平行 reviewer 必带
-
-其他（sandbox、permission-mode、timeout 等）按 role 自动选最优默认。
+- ✅ **API key 永不入聊天/git**：通过 `chmod 600` 文件传递，agent 只看 endpoint URL
+- ✅ **完整审计**：每轮的 prompt、输出、stderr、verdict.json 全保存到 `history/<actor>/<ts>/`
+- ✅ **可重放**：thread 在你项目内（`<project>/.roundtable/`），跟代码一起 commit/分享
+- ✅ **agent 满血探索**：默认全工具开放（WebSearch、WebFetch、Bash、Read、Write），只屏蔽真正破坏性的 git 操作
+- ✅ **每次 dispatch 你都有否决权**：Cursor agent 不会偷偷跑 turn，每次都会先问你确认
 
 ---
 
 ## 文件结构
 
-| 路径 | 作用 |
-|------|------|
-| `SKILL.md` | 完整协议（Cursor 加载这个） |
-| `models.example.json` | 模型目录模板（含 benchmark、价格） |
-| `models.json` | 用户工作副本（gitignored，chmod 600） |
-| `scripts/` | 调度、路由、线程操作 |
-| `roles/*.system.md` | 每个角色的系统提示词 |
+| 路径 | 是什么 |
+|------|--------|
+| `SKILL.md` | 完整协议——Cursor agent 读这个文件 |
+| `models.example.json` | 模型目录模板（已含 benchmark 分数和 cursor 内置模型） |
+| `models.json` | 你的工作副本（gitignored、chmod 600） |
+| `scripts/` | 调度、路由、线程操作（agent 调用，你不需要直接跑） |
+| `roles/*.system.md` | 6 个角色的系统提示词 |
 | `roles/reviewer.schema.json` | reviewer JSON verdict 严格 schema |
-| `docs/` | 进阶文档（脚本分析、模型能力指南） |
+| `docs/` | 进阶文档（脚本细节、模型能力指南、审计快照） |
 
-## 协议细节
+## 进阶
 
-完整规则、模型选择原则、dispatch 确认协议见 [SKILL.md](SKILL.md)。
+完整协议、模型选择原则、dispatch 确认协议、quality mode 停止条件等见 [SKILL.md](SKILL.md)。
 
 ## License
 
