@@ -1,28 +1,30 @@
 {
-  "version": 9,
+  "version": 10,
   "_readme": [
-    "agent-roundtable model registry — minimal template.",
+    "agent-roundtable model registry — minimal template + pre-researched entries.",
     "",
     "Workflow:",
     "  1. `scripts/backend.sh init` copies this file to models.json (chmod 600, gitignored).",
-    "  2. Open models.json. For each model you have credentials for, replace `_template`",
-    "     (or add a new key under `models`). Fill four fields: actor, cli_arg,",
-    "     endpoint.base_url, endpoint.api_key. For Claude on an Anthropic-compat shim",
-    "     (DeepSeek-compat, Bedrock-compat, …) also set endpoint.{opus,sonnet,haiku}_model.",
-    "  3. Set active.codex and/or active.claude to your new model id.",
-    "  4. Tell the chat parent to take over. It will:",
-    "       - read only the non-secret fields (model id, base_url, capability/pricing fields),",
-    "       - WebSearch each new model to fill underlying / context_window_k / max_output_k /",
-    "         benchmarks / best_for / pricing,",
-    "       - extend role_defaults to include your new models,",
-    "       - run `scripts/backend.sh apply` (writes .codex_env.local / .claude_env.local).",
+    "  2. Open models.json. For each model you want to use, fill `endpoint.api_key` (some entries",
+    "     also need `endpoint.base_url` if you're using a proxy). Set `active.codex` and/or",
+    "     `active.claude` to the model id you want each CLI to use.",
+    "  3. `scripts/backend.sh apply` to write .codex_env.local / .claude_env.local.",
+    "",
+    "Three classes of entries are shipped below:",
+    "  A. cursor-* entries — auth via Cursor IDE, no key required, ready to dispatch.",
+    "  B. BYOK pre-researched entries (gpt-5.5, gpt-5.3-codex, claude-4.7-opus,",
+    "     claude-4.6-sonnet) — capability/pricing already filled from upstream docs.",
+    "     You only need to drop in your api_key (and optionally swap base_url for a proxy).",
+    "  C. _template — generic placeholder for any other endpoint (custom proxy, vLLM, …).",
+    "     Rename the key (entries starting with `_` are skipped by `apply`).",
+    "",
+    "If you set a base_url on a BYOK entry pointing to a discount proxy (cialloapi, openrouter,",
+    "etc.), the chat parent will WebSearch for the proxy's actual pricing and update `pricing`",
+    "before applying.",
     "",
     "The api_key never enters chat or agent context — it is read by the python subprocess",
     "inside `apply` and written via `printf %q` to the env file. `backend.sh show` redacts",
-    "it everywhere.",
-    "",
-    "cursor-subagent entries below ship pre-filled because they don't need an endpoint",
-    "(Cursor IDE handles auth). Edit/remove freely."
+    "it everywhere."
   ],
   "active": {
     "codex": null,
@@ -30,7 +32,7 @@
   },
   "models": {
     "_template": {
-      "_status": "Replace this entry's key (e.g. rename _template to gpt-5 or claude-opus-4-5). Entries whose key starts with _ are skipped by `apply`.",
+      "_status": "Generic placeholder. Rename key (e.g. to `my-vllm-llama4`), pick actor=codex|claude, fill cli_arg + endpoint. Entries whose key starts with `_` are skipped by `apply`.",
       "actor": "REPLACE_WITH:codex_or_claude",
       "cli_arg": "REPLACE_WITH:the-exact-model-id-the-api-expects",
       "endpoint": {
@@ -39,93 +41,259 @@
         "_claude_shim_doc": "If actor=claude on an Anthropic-compat shim, also set opus_model, sonnet_model, haiku_model, and (optional) claude_effort_level."
       }
     },
-    "cursor-composer-2": {
-      "actor": "cursor-subagent",
-      "cli_arg": "composer-2-fast",
-      "provider": "cursor-auto-composer-pool",
-      "underlying": "Cursor Composer 2 via Cursor Task subagent (auth via Cursor IDE)",
-      "context_window_k": null,
-      "max_output_k": null,
-      "benchmarks": {},
-      "latency_warning": "Pool-dependent, unbounded queue stalls observed (16 min). No --timeout-s.",
-      "best_for": ["cheap parallel executor", "doc/code fan-out"],
+
+    "gpt-5.5": {
+      "_status": "Pre-researched OpenAI direct. Fill endpoint.api_key with your sk-... key. Swap base_url to a discount proxy (cialloapi, openrouter, …) if you don't have direct OpenAI access — the agent will re-research proxy pricing before apply.",
+      "actor": "codex",
+      "cli_arg": "gpt-5.5",
+      "provider": "openai-direct",
+      "underlying": "OpenAI GPT-5.5 (Apr 2026 flagship, tuned for autonomous agentic workflows)",
+      "knowledge_cutoff": "2025-12-01",
+      "context_window_k": 1000,
+      "max_output_k": 128,
+      "benchmarks": {
+        "terminal_bench_2": 82.7,
+        "osworld_verified": 78.7,
+        "gdpval": 84.9
+      },
+      "best_for": [
+        "high-complexity agentic workflows",
+        "long-context coding (1M tokens)",
+        "OpenAI-side reviewer / planner vs Claude"
+      ],
       "pricing": {
-        "per_1m_input": 0.5,
-        "per_1m_cached_input": 0.2,
-        "per_1m_output": 2.5,
-        "source": "https://cursor.com/cn/docs/models-and-pricing"
+        "per_1m_input": 5.0,
+        "per_1m_cached_input": 0.5,
+        "per_1m_output": 30.0,
+        "source": "https://developers.openai.com/api/docs/models/gpt-5.5"
+      },
+      "endpoint": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "REPLACE_WITH:sk-..."
       }
     },
-    "cursor-claude-4.7-opus": {
-      "actor": "cursor-subagent",
-      "cli_arg": "claude-opus-4-7-thinking-xhigh",
-      "provider": "anthropic-via-cursor",
-      "underlying": "Anthropic Claude 4.7 Opus via Cursor Task subagent (auth via Cursor IDE)",
+
+    "gpt-5.3-codex": {
+      "_status": "Pre-researched OpenAI direct. Codex-tuned variant — cheaper and explicitly optimized for terminal/agent tasks.",
+      "actor": "codex",
+      "cli_arg": "gpt-5.3-codex",
+      "provider": "openai-direct",
+      "underlying": "OpenAI GPT-5.3-Codex (Feb 2026, optimized for agentic coding execution)",
+      "knowledge_cutoff": "2024-09-30",
+      "context_window_k": 400,
+      "max_output_k": 128,
+      "benchmarks": {
+        "terminal_bench_2": 77.3
+      },
+      "best_for": [
+        "terminal-heavy engineering and debugging",
+        "long-running codex CLI sessions",
+        "cheaper OpenAI-side executor"
+      ],
+      "pricing": {
+        "per_1m_input": 1.75,
+        "per_1m_cached_input": 0.175,
+        "per_1m_output": 14.0,
+        "source": "https://platform.openai.com/docs/models/gpt-5-codex"
+      },
+      "endpoint": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "REPLACE_WITH:sk-..."
+      }
+    },
+
+    "claude-4.7-opus": {
+      "_status": "Pre-researched Anthropic direct. Anthropic Apr 2026 flagship. Fill endpoint.api_key. For an Anthropic-compat shim (DeepSeek-compat, Bedrock-compat) swap base_url and add opus_model/sonnet_model/haiku_model/claude_effort_level.",
+      "actor": "claude",
+      "cli_arg": "claude-opus-4-7",
+      "provider": "anthropic-direct",
+      "underlying": "Anthropic Claude Opus 4.7 (Apr 16, 2026; SWE-Pro leader, self-verifying execution)",
       "context_window_k": 1000,
       "max_output_k": 128,
       "benchmarks": {
         "swe_bench_verified": 87.6,
         "swe_bench_pro": 64.3,
         "terminal_bench_2": 69.4,
-        "cursor_bench": 70.0
+        "cursor_bench": 70.0,
+        "gpqa_diamond": 94.2,
+        "finance_agent": 64.4
       },
-      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
-      "best_for": ["highest-rigor reviewer (SWE-Pro leader)", "self-verifying execution", "web research"],
+      "best_for": [
+        "highest-rigor reviewer (SWE-Pro leader)",
+        "self-verifying execution",
+        "vision-heavy tasks (3.3x resolution vs 4.6)"
+      ],
       "pricing": {
         "per_1m_input": 5.0,
         "per_1m_cached_input": 0.5,
         "per_1m_output": 25.0,
-        "source": "https://cursor.com/cn/docs/models-and-pricing"
+        "source": "https://www.anthropic.com/news/claude-opus-4-7"
+      },
+      "endpoint": {
+        "base_url": "https://api.anthropic.com",
+        "api_key": "REPLACE_WITH:sk-ant-...",
+        "opus_model": "claude-opus-4-7",
+        "sonnet_model": "claude-sonnet-4-6",
+        "haiku_model": "claude-haiku-4-5",
+        "claude_effort_level": "high"
       }
     },
-    "cursor-claude-4.6-sonnet": {
-      "actor": "cursor-subagent",
-      "cli_arg": "claude-4.6-sonnet-medium-thinking",
-      "provider": "anthropic-via-cursor",
-      "underlying": "Anthropic Claude 4.6 Sonnet via Cursor Task subagent (auth via Cursor IDE)",
+
+    "claude-4.6-sonnet": {
+      "_status": "Pre-researched Anthropic direct. Workhorse Sonnet — Opus-tier on many tasks at Sonnet pricing. Fill endpoint.api_key.",
+      "actor": "claude",
+      "cli_arg": "claude-sonnet-4-6",
+      "provider": "anthropic-direct",
+      "underlying": "Anthropic Claude Sonnet 4.6 (Feb 17, 2026; near-Opus performance at Sonnet pricing)",
       "context_window_k": 1000,
       "max_output_k": 128,
-      "benchmarks": {"swe_bench_verified": 79.6},
-      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
-      "best_for": ["balanced Cursor executor/reviewer", "math-heavy tasks"],
+      "benchmarks": {
+        "swe_bench_verified": 79.6,
+        "terminal_bench_2": 59.1,
+        "osworld_verified": 72.5
+      },
+      "best_for": [
+        "balanced executor / discussant",
+        "production agentic workloads (cheap)",
+        "computer-use tasks"
+      ],
       "pricing": {
         "per_1m_input": 3.0,
         "per_1m_cached_input": 0.3,
         "per_1m_output": 15.0,
-        "source": "https://cursor.com/cn/docs/models-and-pricing"
+        "source": "https://www.anthropic.com/news/claude-sonnet-4-6"
+      },
+      "endpoint": {
+        "base_url": "https://api.anthropic.com",
+        "api_key": "REPLACE_WITH:sk-ant-...",
+        "opus_model": "claude-opus-4-7",
+        "sonnet_model": "claude-sonnet-4-6",
+        "haiku_model": "claude-haiku-4-5",
+        "claude_effort_level": "medium"
       }
     },
+
+    "cursor-composer-2": {
+      "actor": "cursor-subagent",
+      "cli_arg": "composer-2-fast",
+      "provider": "cursor-auto-composer-pool",
+      "underlying": "Cursor Composer 2 (frontier-tier coding model trained for agentic SWE; self-summarization for long-horizon tasks) via Cursor Task subagent (auth via Cursor IDE)",
+      "context_window_k": 200,
+      "max_output_k": null,
+      "benchmarks": {
+        "cursor_bench": 61.3,
+        "terminal_bench_2": 61.7,
+        "swe_bench_multilingual": 73.7
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls observed (16 min). No --timeout-s.",
+      "best_for": [
+        "cheap parallel executor",
+        "doc/code fan-out",
+        "default Cursor agentic loop"
+      ],
+      "pricing": {
+        "per_1m_input": 0.5,
+        "per_1m_cached_input": 0.2,
+        "per_1m_output": 2.5,
+        "source": "https://cursor.com/docs/models-and-pricing"
+      }
+    },
+
+    "cursor-claude-4.7-opus": {
+      "actor": "cursor-subagent",
+      "cli_arg": "claude-opus-4-7-thinking-high",
+      "provider": "anthropic-via-cursor",
+      "underlying": "Anthropic Claude Opus 4.7 (Apr 16, 2026) via Cursor Task subagent (auth via Cursor IDE)",
+      "context_window_k": 1000,
+      "max_output_k": 128,
+      "benchmarks": {
+        "swe_bench_verified": 87.6,
+        "swe_bench_pro": 64.3,
+        "terminal_bench_2": 69.4,
+        "cursor_bench": 70.0,
+        "gpqa_diamond": 94.2,
+        "finance_agent": 64.4
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
+      "best_for": [
+        "highest-rigor reviewer (SWE-Pro leader)",
+        "self-verifying execution",
+        "vision-heavy tasks"
+      ],
+      "pricing": {
+        "per_1m_input": 5.0,
+        "per_1m_cached_input": 0.5,
+        "per_1m_output": 25.0,
+        "source": "https://cursor.com/docs/models-and-pricing"
+      }
+    },
+
+    "cursor-claude-4.6-sonnet": {
+      "actor": "cursor-subagent",
+      "cli_arg": "claude-4.6-sonnet-medium-thinking",
+      "provider": "anthropic-via-cursor",
+      "underlying": "Anthropic Claude Sonnet 4.6 (Feb 17, 2026) via Cursor Task subagent (auth via Cursor IDE)",
+      "context_window_k": 1000,
+      "max_output_k": 128,
+      "benchmarks": {
+        "swe_bench_verified": 79.6,
+        "terminal_bench_2": 59.1,
+        "osworld_verified": 72.5
+      },
+      "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
+      "best_for": [
+        "balanced Cursor executor / reviewer",
+        "production agentic workloads",
+        "computer-use tasks"
+      ],
+      "pricing": {
+        "per_1m_input": 3.0,
+        "per_1m_cached_input": 0.3,
+        "per_1m_output": 15.0,
+        "source": "https://cursor.com/docs/models-and-pricing"
+      }
+    },
+
     "cursor-gemini-3.1-pro": {
       "actor": "cursor-subagent",
       "cli_arg": "gemini-3.1-pro",
       "provider": "google-via-cursor",
-      "underlying": "Google Gemini 3.1 Pro via Cursor Task subagent (auth via Cursor IDE)",
+      "underlying": "Google Gemini 3.1 Pro (Feb 2026; ARC-AGI-2 leader, deep thinking modes) via Cursor Task subagent (auth via Cursor IDE)",
       "context_window_k": 1000,
       "max_output_k": 64,
       "benchmarks": {
-        "terminal_bench_2": 68.5,
+        "arc_agi_2": 77.1,
         "gpqa_diamond": 94.3,
-        "arc_agi_2": 77.1
+        "terminal_bench_2": 80.1,
+        "swe_bench_verified": 80.6,
+        "humanitys_last_exam": 44.4,
+        "scicode": 58.9
       },
       "latency_warning": "Pool-dependent, unbounded queue stalls. No --timeout-s.",
-      "best_for": ["abstract reasoning (ARC-AGI-2 leader)", "third-vendor opinion", "scientific QA"],
-      "limitations": ["max output 64K (half of others)", "weak on SWE-bench agentic coding"],
+      "best_for": [
+        "abstract reasoning (ARC-AGI-2 leader, ~2x Gemini 3 Pro)",
+        "third-vendor opinion vs Anthropic / OpenAI",
+        "scientific QA (GPQA Diamond 94.3)"
+      ],
+      "limitations": [
+        "max output 64K (half of Claude/GPT-5)"
+      ],
       "pricing": {
         "per_1m_input": 2.0,
         "per_1m_cached_input": 0.2,
         "per_1m_output": 12.0,
-        "source": "https://cursor.com/cn/docs/models-and-pricing"
+        "source": "https://cursor.com/docs/models-and-pricing"
       }
     }
   },
   "role_defaults": {
     "triage":              ["cursor-composer-2"],
-    "discussant":          ["cursor-composer-2"],
+    "discussant":          ["cursor-composer-2", "cursor-claude-4.6-sonnet"],
     "planner":             ["cursor-claude-4.7-opus", "cursor-gemini-3.1-pro"],
-    "executor":            ["cursor-composer-2"],
+    "executor":            ["cursor-composer-2", "cursor-claude-4.6-sonnet"],
     "executor-heavy":      ["cursor-claude-4.7-opus"],
     "reviewer":            ["cursor-claude-4.7-opus", "cursor-gemini-3.1-pro"],
-    "reviewer-aggregator": ["cursor-gemini-3.1-pro"],
+    "reviewer-aggregator": ["cursor-gemini-3.1-pro", "cursor-claude-4.7-opus"],
     "compactor":           ["cursor-composer-2"]
   }
 }
