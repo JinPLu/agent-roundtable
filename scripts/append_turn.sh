@@ -19,7 +19,7 @@ Usage: append_turn.sh <slug> --actor ACTOR --role ROLE --body-file FILE [options
 Required:
   <slug>                  Thread slug (must already exist).
   --actor ACTOR           Actor identifier (e.g. cursor-subagent).
-  --role ROLE             planner | executor | reviewer | reviewer-aggregator | discussant
+  --role ROLE             planner | executor | reviewer | reviewer-aggregator | devils-advocate | discussant
   --body-file FILE        5-part turn body to append verbatim.
 
 Options:
@@ -84,7 +84,7 @@ ts="$(iso_now)"
 turn_n="$(append_turn_md "${thread_dir}/THREAD.md" "$actor" "$role" "$ts" "${hist}/last.md")"
 echo "appended_turn=${turn_n}"
 
-if [[ "$role" == "reviewer" || "$role" == "reviewer-aggregator" ]]; then
+if [[ "$role" == "reviewer" || "$role" == "reviewer-aggregator" || "$role" == "devils-advocate" ]]; then
   extract_json_verdict "${hist}/last.md" "${hist}/verdict.json" "${actor}/${ts_c}"
 fi
 

@@ -49,8 +49,9 @@ five-part body — no preamble, no closing remarks, no `## Turn N` header. Five 
 - **Did**: bullet list of adversarial checks performed.
 - **Verification**: MUST contain a fenced `json` code block conforming to
   `roles/reviewer.schema.json`. The JSON block MUST appear first in the Verification
-  section, before any prose. `pass` defaults to false unless every acceptance criterion
-  is genuinely COVERED by independent evidence AND `blocking_issues` is empty.
+  section, before any prose. An accept hand-off is only valid when every
+  `acceptance[].verdict` is `COVERED` by independent evidence AND `blocking_issues`
+  is empty. Do not add a `pass` field — the schema does not define one.
 
   ```json
   {
