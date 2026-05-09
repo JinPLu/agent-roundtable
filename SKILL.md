@@ -15,15 +15,27 @@ A thin file-based substrate where participants take turns around a shared on-dis
 Step-by-step (the agent runs this, not the user):
 
 1. **Probe**: `scripts/backend.sh show` — if both actors print "not configured", continue; otherwise show the current config and ask the user whether to keep, switch, or add the missing actor.
-2. **Pick actor + provider preset** via `AskQuestion`. Two questions in one batch:
-   - *Which actor to configure?* options: `codex` / `claude` / `both`
-   - *Which provider preset?* options: `openai` (`https://api.openai.com/v1`), `anthropic` (`https://api.anthropic.com`), `cialloapi` (`https://api.cialloapi.cn/v1`), `deepseek-anthropic-compat` (`https://api.deepseek.com/anthropic`), `azure-openai`, `custom`
-3. **Collect base URL + API key in chat** (`AskQuestion` is multi-choice only, so the agent asks the user to paste them as a normal chat reply). For known presets the base URL is auto-filled; the user only needs to paste the key. **Never echo the key back; treat it as a secret and write it via `backend.sh` only.**
-4. **Confirm model name** with another `AskQuestion`. Offer 3-5 model-id options known for that provider (e.g. for OpenAI: `gpt-4o`, `gpt-4o-mini`, `gpt-5`, `o1`, `custom`). If `custom`, ask for the exact model id in chat.
-5. **Research capabilities**: call `WebSearch` with the model id and provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If web search returns nothing reliable, ask the user to paste a docs/pricing URL and `WebFetch` it.
-6. **Write the env file**: `scripts/backend.sh <actor> <base-url> <api-key> <model>` (one call per actor configured).
-7. **Update `models.json`**: append (or replace) an entry for the new model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Then add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
-8. **Verify**: `scripts/backend.sh show` redacts the key; `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` confirms the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
+2. **Ask which actor** via `AskQuestion` (one question, options: `codex` / `claude` / `both` / `skip`). This is the only multi-choice ask — everything else is one bundled chat ask.
+3. **Bundled chat ask** (one chat message, the user replies with all four values together — base URL, API key, and model belong to the same triple per actor):
+   ```
+   Please paste your config (per actor) in a single block. Treat the key as a secret —
+   I will write it straight to the chmod-600 .local file via backend.sh and never echo it.
+
+   For codex (OpenAI-compatible):
+     base_url: <e.g. https://api.openai.com/v1>
+     api_key:  <sk-...>
+     model:    <e.g. gpt-4o>
+
+   For claude (Anthropic-compatible):
+     base_url: <e.g. https://api.anthropic.com>
+     api_key:  <sk-ant-...>
+     model:    <e.g. claude-opus-4-5>   # used for opus/sonnet/haiku tiers
+   ```
+   Common preset URLs the agent should suggest inline so the user can just confirm: OpenAI `https://api.openai.com/v1` · Anthropic `https://api.anthropic.com` · cialloapi `https://api.cialloapi.cn/v1` · DeepSeek-compat `https://api.deepseek.com/anthropic`.
+4. **Research capabilities**: call `WebSearch` with the model id and provider (e.g. `"deepseek-v4-pro context window benchmark pricing 2026"`). Extract: context window (k tokens), max output (k tokens), benchmark numbers (SWE-Bench Verified, Terminal-Bench, etc.), per-1M input/output pricing, best-for tags. If web search returns nothing reliable, ask the user to paste a docs/pricing URL and `WebFetch` it.
+5. **Write the env file**: `scripts/backend.sh <actor> <base-url> <api-key> <model>` (one call per actor configured).
+6. **Update `models.json`**: append (or replace) an entry for the new model under `models.<id>`, populated with the researched values (`actor`, `cli_arg`, `provider`, `underlying`, `context_window_k`, `max_output_k`, `benchmarks`, `best_for`, `pricing`). Then add the model id to `role_defaults` for whichever roles it should serve (typically `executor` and `reviewer` for top-tier, `compactor`/`triage` for cheap models).
+7. **Verify**: `scripts/backend.sh show` redacts the key; `python3 -c "import json; print(json.load(open('models.json'))['models']['<id>'])"` confirms the registry update; then dispatch a 1-line health-check turn (e.g. `codex_turn.sh _health --role discussant --addendum "Reply with the single word: ok"`).
 
 The wizard is idempotent — re-running it overwrites the `.local` file and the matching `models.json` entry.
 
