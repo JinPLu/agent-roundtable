@@ -42,8 +42,8 @@ Options:
   -h, --help            Print this help and exit.
 
 Environment:
-  ROUNDTABLE_REPO_ROOT  Repo root (default: auto-detected via git).
-  ROUNDTABLE_ROOT       Artifacts root (default: $ROUNDTABLE_REPO_ROOT/.roundtable).
+  ROUNDTABLE_PROJECT_ROOT  Project root (default: auto-detected via git).
+  ROUNDTABLE_ROOT          Artifacts root (default: $ROUNDTABLE_PROJECT_ROOT/.roundtable).
   ROUNDTABLE_TAIL_K     Recent turns inlined into prompts (default: 3).
   ROUNDTABLE_TIMEOUT_S  Default for --timeout-s (default: 1500).
 EOF
@@ -148,7 +148,9 @@ _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --a
 if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" && "$ROUNDTABLE_PROJECT_ROOT" != "$thread_dir" ]]; then
   _args+=( --add-dir "$ROUNDTABLE_PROJECT_ROOT" )
 fi
-[[ "$bare" -eq 0 ]] && _args+=( --exclude-dynamic-system-prompt-sections )
+# Note: dynamic system prompt sections (CLAUDE.md, project structure hints,
+# recent files) stay enabled by default — they help the agent explore. Use
+# --bare for strict isolation.
 [[ -n "$model" ]] && _args+=( --model "$model" )
 [[ -f "$role_sys" ]] && _args+=( --append-system-prompt "$(cat "$role_sys")" )
 [[ "$bare" -eq 1 ]] && _args+=( --bare )

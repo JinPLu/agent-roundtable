@@ -72,7 +72,7 @@ Alternatives:
 Proceed? Or adjust actor / effort / go multi?
 ```
 
-**`ROUNDTABLE_PROJECT_ROOT`** — set this to your project's absolute path when agents need to read project files (`.planning/`, `STATE.json`, `DASHBOARD.md`, work orders). The agent passes it as an env var; each prompt then lists the key planning files automatically. If `Project` shows "none" and agents need project context, tell the agent the path.
+**Project root**: `ROUNDTABLE_PROJECT_ROOT` is the single source of truth — agents are mounted on it (full repo read/write within sandbox), threads live at `$PROJECT_ROOT/.roundtable/threads/<slug>/`, and `.planning/` index files (if present) are listed in every prompt. Auto-detected as the caller's `git rev-parse --show-toplevel`; override only when running from outside the project.
 
 Skip confirmation only in a pre-agreed convergence loop or explicit "dispatch now" — log the skip in the addendum.
 
@@ -175,9 +175,9 @@ $ROUNDTABLE_ROOT/threads/<slug>/
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ROUNDTABLE_PROJECT_ROOT` | — | Project repo path; injects `.planning/` file list into every prompt |
-| `ROUNDTABLE_REPO_ROOT` | auto (git root) | Roundtable infrastructure root |
-| `ROUNDTABLE_ROOT` | `$ROUNDTABLE_REPO_ROOT/.roundtable` | Threads root |
+| `ROUNDTABLE_PROJECT_ROOT` | auto (caller's `git rev-parse --show-toplevel`) | The user's project repo. Threads live in `$PROJECT_ROOT/.roundtable/`; agents mount this as cwd or `--add-dir`. |
+| `ROUNDTABLE_ROOT` | `$PROJECT_ROOT/.roundtable` | Threads root override (rarely needed). |
+| `ROUNDTABLE_REPO_ROOT` | (alias of `PROJECT_ROOT`) | Deprecated; legacy alias kept for backward compat. |
 | `ROUNDTABLE_TAIL_K` | `3` | Recent turns inlined into prompts |
 | `ROUNDTABLE_TIMEOUT_S` | codex `1800`, claude `1500` | Hard wallclock cap per turn |
 

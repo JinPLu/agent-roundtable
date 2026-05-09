@@ -38,8 +38,8 @@ Options:
   -h, --help            Print this help and exit.
 
 Environment:
-  ROUNDTABLE_REPO_ROOT  Repo root (default: auto-detected via git).
-  ROUNDTABLE_ROOT       Artifacts root (default: $ROUNDTABLE_REPO_ROOT/.roundtable).
+  ROUNDTABLE_PROJECT_ROOT  Project root (default: auto-detected via git).
+  ROUNDTABLE_ROOT          Artifacts root (default: $ROUNDTABLE_PROJECT_ROOT/.roundtable).
   ROUNDTABLE_TAIL_K     Recent turns inlined into prompts (default: 3).
   ROUNDTABLE_TIMEOUT_S  Default for --timeout-s, 0 disables (default: 1800).
 EOF
@@ -108,21 +108,18 @@ fi
 hist="${thread_dir}/history/codex/${ts_c}"
 mkdir -p "$hist"
 
-# CWD + add-dir: non-executor roles run from thread_dir (workspace-write grants
-# artifact writes via -C); --add-dir repo_root grants read access to source.
-# Executor runs from repo_root (source writes); --add-dir thread_dir for reading.
-# When ROUNDTABLE_PROJECT_ROOT is set and differs from repo_root, mount it too —
-# otherwise agents see project file paths in the prompt but can't open them.
-_cwd="$repo_root"
-_extra_dirs=( "$thread_dir" )
+# CWD + add-dir: executor runs from project root (so source writes are inside
+# the workspace-write sandbox); non-executor roles run from thread_dir to
+# scope writes to artifacts/, with project root added as read-only via --add-dir.
 if [[ -n "$worktree" ]]; then
   _cwd="$(ensure_worktree "$thread_dir" "$worktree")"
-elif [[ "$role" != "executor" ]]; then
+  _add_dir="$thread_dir"
+elif [[ "$role" == "executor" ]]; then
+  _cwd="$ROUNDTABLE_PROJECT_ROOT"
+  _add_dir="$thread_dir"
+else
   _cwd="$thread_dir"
-  _extra_dirs=( "$repo_root" )
-fi
-if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$repo_root" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" ]]; then
-  _extra_dirs+=( "$ROUNDTABLE_PROJECT_ROOT" )
+  _add_dir="$ROUNDTABLE_PROJECT_ROOT"
 fi
 
 # Compose addendum.
@@ -155,6 +152,7 @@ _prompt="$(ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" build_prompt "$thread_dir" 
 _args=(
   --skip-git-repo-check
   -C "$_cwd"
+  --add-dir "$_add_dir"
   -s "$sandbox"
   -c approval_policy="never"
   --enable goals
@@ -162,9 +160,6 @@ _args=(
   -o "${hist}/last.md"
   --json
 )
-for _d in "${_extra_dirs[@]}"; do
-  _args+=( --add-dir "$_d" )
-done
 [[ -n "$model" ]] && _args+=( -m "$model" )
 
 _start=$(date +%s)

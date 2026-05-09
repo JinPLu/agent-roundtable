@@ -4,41 +4,45 @@
 
 set -euo pipefail
 
-# ── Repo-root resolution (priority order) ─────────────────────────────────────
-# Goal: ROUNDTABLE_REPO_ROOT should be the **user's project repo**, not the
-# skill's own install location. Priority:
-#   1. Explicit env var ROUNDTABLE_REPO_ROOT.
-#   2. git rev-parse --show-toplevel from caller's cwd (likely the project).
-#   3. git -C <script-dir> rev-parse --show-toplevel (fallback to skill repo).
+# ── Project-root resolution ──────────────────────────────────────────────────
+# Single source of truth: ROUNDTABLE_PROJECT_ROOT is the user's project.
+#   - threads live at $PROJECT_ROOT/.roundtable/threads/<slug>/
+#   - agents are mounted onto $PROJECT_ROOT for source reads/writes
+#   - if `.planning/` exists under it, key files are listed in every prompt
+# Resolution priority:
+#   1. Explicit env var ROUNDTABLE_PROJECT_ROOT.
+#   2. ROUNDTABLE_REPO_ROOT (deprecated alias, still accepted).
+#   3. git rev-parse --show-toplevel from caller's cwd.
 #   4. Hard error.
-# Warn loudly if the resolved root looks like the skill's own dir, since that
-# almost always means the caller forgot to cd into their project first.
-if [[ -z "${ROUNDTABLE_REPO_ROOT:-}" ]]; then
-  _rt_git_cwd=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  if [[ -n "$_rt_git_cwd" ]]; then
-    ROUNDTABLE_REPO_ROOT="$_rt_git_cwd"
+# Warn if the resolved root accidentally is the skill's own dir.
+if [[ -z "${ROUNDTABLE_PROJECT_ROOT:-}" ]]; then
+  if [[ -n "${ROUNDTABLE_REPO_ROOT:-}" ]]; then
+    ROUNDTABLE_PROJECT_ROOT="$ROUNDTABLE_REPO_ROOT"
   else
-    _rt_git_script=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || true)
-    if [[ -n "$_rt_git_script" ]]; then
-      ROUNDTABLE_REPO_ROOT="$_rt_git_script"
+    _rt_git_cwd=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_rt_git_cwd" ]]; then
+      ROUNDTABLE_PROJECT_ROOT="$_rt_git_cwd"
     else
-      echo "ERROR: Cannot determine repo root; set ROUNDTABLE_REPO_ROOT=/path/to/your/project or run from inside a git repo." >&2
+      echo "ERROR: Cannot determine project root; set ROUNDTABLE_PROJECT_ROOT=/path/to/your/project or run from inside a git repo." >&2
       exit 1
     fi
+    unset _rt_git_cwd
   fi
-  unset _rt_git_cwd _rt_git_script
 fi
-# Warn if repo root accidentally points at the skill itself.
 _rt_skill_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-if [[ "$ROUNDTABLE_REPO_ROOT" == "$_rt_skill_dir" ]]; then
-  echo "WARN [_common.sh]: ROUNDTABLE_REPO_ROOT=${ROUNDTABLE_REPO_ROOT} is the skill's own directory." >&2
-  echo "                  Agents will explore the skill, not your project. Set" >&2
-  echo "                  ROUNDTABLE_REPO_ROOT=/path/to/your/project to fix this." >&2
+if [[ "$ROUNDTABLE_PROJECT_ROOT" == "$_rt_skill_dir" ]]; then
+  echo "WARN [_common.sh]: ROUNDTABLE_PROJECT_ROOT=${ROUNDTABLE_PROJECT_ROOT} is the skill's own directory." >&2
+  echo "                  Agents would explore the skill, not your project. Set" >&2
+  echo "                  ROUNDTABLE_PROJECT_ROOT=/path/to/your/project to fix this." >&2
 fi
 unset _rt_skill_dir
-export ROUNDTABLE_REPO_ROOT
+export ROUNDTABLE_PROJECT_ROOT
 
-ROUNDTABLE_ROOT="${ROUNDTABLE_ROOT:-${ROUNDTABLE_REPO_ROOT}/.roundtable}"
+# Legacy alias — keep ROUNDTABLE_REPO_ROOT pointing at the same dir for any
+# downstream code that still reads it.
+export ROUNDTABLE_REPO_ROOT="${ROUNDTABLE_REPO_ROOT:-$ROUNDTABLE_PROJECT_ROOT}"
+
+ROUNDTABLE_ROOT="${ROUNDTABLE_ROOT:-${ROUNDTABLE_PROJECT_ROOT}/.roundtable}"
 export ROUNDTABLE_ROOT
 
 THREADS_ROOT="${ROUNDTABLE_ROOT}/threads"
@@ -105,43 +109,30 @@ safe_repo_git() {
 }
 
 emit_repo_context() {
+  local proj="$ROUNDTABLE_PROJECT_ROOT"
   local branch head
   branch="$(safe_repo_git rev-parse --abbrev-ref HEAD | head -n 1)"
   branch="${branch:-unknown}"
   head="$(safe_repo_git log -1 --format=%h | head -n 1)"
   head="${head:-unknown}"
 
-  printf '## Repo context\n'
-  printf -- '- repo: `%s` branch: `%s` HEAD: `%s`\n' "$ROUNDTABLE_REPO_ROOT" "$branch" "$head"
-  [[ -f "${ROUNDTABLE_REPO_ROOT}/AGENTS.md" ]] && printf -- '- AGENTS.md: `%s/AGENTS.md`\n' "$ROUNDTABLE_REPO_ROOT"
-  [[ -d "${ROUNDTABLE_REPO_ROOT}/.cursor/rules" ]] && printf -- '- rules: `%s/.cursor/rules/`\n' "$ROUNDTABLE_REPO_ROOT"
-  printf '\n'
-
-  # ── Project root (optional) ─────────────────────────────────────────────────
-  # Set ROUNDTABLE_PROJECT_ROOT=/path/to/your/project so agents see the actual
-  # project files (e.g. .planning/, AGENTS.md, .cursor/rules/) in their prompt.
-  local proj="${ROUNDTABLE_PROJECT_ROOT:-}"
-  if [[ -n "$proj" ]]; then
-    printf '## Project context (`ROUNDTABLE_PROJECT_ROOT`)\n'
-    printf -- '- project root: `%s`\n' "$proj"
-    [[ -f "${proj}/AGENTS.md" ]] && printf -- '- AGENTS.md: `%s/AGENTS.md`\n' "$proj"
-    [[ -d "${proj}/.cursor/rules" ]] && printf -- '- rules: `%s/.cursor/rules/`\n' "$proj"
-    if [[ -d "${proj}/.planning" ]]; then
-      printf -- '- planning dir: `%s/.planning/`\n' "$proj"
-      # List key planning files so agents know what to read
-      local pf
-      for pf in STATE.json DASHBOARD.md NARRATIVE.md paper/NARRATIVE.md \
-                 paper/STATUS_REPORT_*.md runbooks/WORK_ORDERS.md \
-                 runbooks/DPO_EXECUTION_PLAN_*.md; do
-        local full="${proj}/.planning/${pf}"
-        # glob expansion for wildcards
-        for match in ${full}; do
-          [[ -f "$match" ]] && printf -- '  - `%s`\n' "$match"
-        done
+  printf '## Project context\n'
+  printf -- '- project root: `%s`  branch: `%s`  HEAD: `%s`\n' "$proj" "$branch" "$head"
+  [[ -f "${proj}/AGENTS.md" ]] && printf -- '- AGENTS.md: `%s/AGENTS.md`\n' "$proj"
+  [[ -d "${proj}/.cursor/rules" ]] && printf -- '- rules: `%s/.cursor/rules/`\n' "$proj"
+  if [[ -d "${proj}/.planning" ]]; then
+    printf -- '- planning dir: `%s/.planning/` — read the index files below before relying on summaries:\n' "$proj"
+    local pf
+    for pf in STATE.json DASHBOARD.md NARRATIVE.md paper/NARRATIVE.md \
+               paper/STATUS_REPORT_*.md runbooks/WORK_ORDERS.md \
+               runbooks/DPO_EXECUTION_PLAN_*.md; do
+      local full="${proj}/.planning/${pf}"
+      for match in ${full}; do
+        [[ -f "$match" ]] && printf -- '  - `%s`\n' "$match"
       done
-    fi
-    printf '\n'
+    done
   fi
+  printf '\n'
 }
 
 # Per-turn unique history dir suffix; combines second-precision UTC ts with
