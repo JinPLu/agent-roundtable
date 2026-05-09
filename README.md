@@ -30,11 +30,23 @@ git clone https://github.com/JinPLu/agent-roundtable.git ~/.cursor/skills/agent-
 在 Cursor 对话框中输入：
 > 「用 /agent-roundtable 初始化配置」
 
-Agent 会自动帮你生成 `models.json`。填入你的 API Key 后，回复「**应用配置**」。
+Agent 会自动帮你生成 `models.json`。打开该文件，为你要用的模型填入 `base_url` 和 `api_key`：
+```json
+"my-model": {
+  "actor": "codex",
+  "endpoint": {
+    "base_url": "https://api.openai.com/v1",
+    "api_key": "sk-..."
+  }
+}
+```
+填好后，回复 Cursor：「**应用配置**」。
 
-### 3. 注入项目上下文（推荐）
-为了让 Agent 满血启动，在你的项目根目录对 Cursor 说：
-> 「用 agent-roundtable，dispatch 一个 subagent 给我项目造一份 AGENTS.md 和 CLAUDE.md」
+### 3. 注入项目上下文（满血启动关键）
+Agent CLI 启动时会自动加载项目根目录的上下文文件。**没有它们，Agent 每次都要重新探索项目，浪费 Token 且容易瞎猜；有了它们，Agent 一上来就是满血状态。**
+
+在你的项目根目录对 Cursor 说：
+> 「用 agent-roundtable，dispatch 一个 subagent 给我项目造一份 AGENTS.md（跨平台通用规则）和一份 CLAUDE.md（用 @AGENTS.md 导入，并加上 Claude 专属规则）」
 
 ---
 
