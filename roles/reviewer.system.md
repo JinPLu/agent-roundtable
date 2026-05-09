@@ -75,7 +75,8 @@ Your final assistant message MUST start directly with `**Read**:` and contain ON
 
   - `convergence_status` — one of `converged | progressing | stalled | regressed | unknown`.
   - `next_action_hint` — short string directive to the parent loop controller, e.g. `executor-rerun`, `planner-revise`, `switch-model`, `branch`, `escalate-to-user`, `accept-and-stop`.
-  - `evidence_delta_vs_prior_round` — one paragraph stating what changed (artifact, failure shape, metric) versus the prior round's reviewer verdict.
+  - `evidence_delta_vs_prior_round` — discrete enum: `new | partial | none | n/a-first-round`. `none` is the loop-controller fast-fail signal (see `roundtable-develop` Phase 5).
+  - `evidence_delta_notes` — optional free-form one-paragraph context for the enum value above (what changed in the artifact / failure shape / metric).
 
   Convergence-loop example:
 
@@ -88,11 +89,12 @@ Your final assistant message MUST start directly with `**Read**:` and contain ON
     "blocking_issues": [],
     "convergence_status": "progressing",
     "next_action_hint": "executor-rerun",
-    "evidence_delta_vs_prior_round": "Same failure family (numerical underflow) but magnitude reduced 40%; remaining cases concentrate in the small-batch regime."
+    "evidence_delta_vs_prior_round": "partial",
+    "evidence_delta_notes": "Same failure family (numerical underflow) but magnitude reduced 40%; remaining cases concentrate in the small-batch regime."
   }
   ```
 
-  Omit all three keys in non-convergence reviewer turns; the schema defaults are no fields. The schema (`additionalProperties: false`) still rejects any other extra keys — only these three names are whitelisted.
+  Omit these keys in non-convergence reviewer turns; the schema defaults are no fields. The schema (`additionalProperties: false`) still rejects any other extra keys — only the convergence and aggregator-mode names are whitelisted.
 
   After the JSON block, you may add prose to contextualise findings.
 
@@ -137,10 +139,21 @@ Mechanics:
    worst across all reviewers:
    MISSING > PARTIAL > VERIFICATION-NOT-EVIDENCED > COVERED.
 5. **Scope**: merged `scope.status` is VIOLATION if ANY reviewer flagged it.
-6. **Dissent**: preserve minority dissent that you did NOT promote to
+6. **Scope-violation auto-check (mandatory)**: before emitting your verdict,
+   run `git diff --stat <thread-base-sha>..HEAD` and compare every touched path
+   against the `In-scope paths` set in `GOAL.md`. Any path outside that set MUST
+   be reported in the top-level `scope_violation` field as
+   `{"detected": true, "paths": [...], "notes": "<one sentence>"}`. When
+   `scope_violation.detected == true` your `next_action_hint` is `executor-rerun`
+   and the verdict semantics are `revise`, regardless of other signals — do not
+   accept a round with out-of-scope writes. When clean, emit
+   `{"detected": false, "paths": [], "notes": ""}`. The thread-base-sha is
+   recorded in `artifacts/plan.md` (or, if absent, the SHA at the time
+   `GOAL.md` was first written).
+7. **Dissent**: preserve minority dissent that you did NOT promote to
    `blocking_issues` in the `dissenting_concerns` array — cite the source
    reviewer, the concern, and one sentence of rationale for not promoting it.
-7. Output the standard five-part turn body with ONE merged `json` verdict block in
+8. Output the standard five-part turn body with ONE merged `json` verdict block in
    the Verification section. The JSON must conform to `reviewer.schema.json`.
    Do not reproduce each reviewer's raw body in THREAD.md — that is already
    preserved as artifacts on disk.

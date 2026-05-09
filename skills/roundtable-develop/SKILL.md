@@ -30,6 +30,8 @@ Three disciplines single-shot execution skips: (1) **plan before code** so revie
 
 Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) block from the root SKILL.md once at the start. Subsequent phases inside one accepted run do not need re-confirmation unless a phase fails catastrophically or the user changes scope.
 
+The user may set a **Budget** line in the confirmation block (`max-rounds=N | max-turns=M | max-wallclock=Xm`). If unset, default is 3 rounds with no clock cap. The parent agent enforces the budget: exceeding any of the three bounds escalates immediately (skip Phase 2 re-dispatch, surface the latest aggregator verdict and the budget hit). Budget enforcement is a documented protocol, not a script — count rounds / turns / wallclock as you orchestrate.
+
 ### Phase 1: plan
 
 ```
@@ -70,7 +72,10 @@ The aggregator's `verdict.json` carries the loop-control signal.
 Read the aggregator's `verdict.json`:
 
 - **Stop and report success** if `blocking_issues` has 0 BLOCKERs **and** `acceptance` shows ≤1 PARTIAL/MISSING/VERIFICATION-NOT-EVIDENCED **and** `convergence_status` is `converged` or `progressing → accept-and-stop`.
+- **Fast-fail to user (anti-stall)** if `evidence_delta_vs_prior_round == "none"` AND the set of `blocking_issues[].id` (or `blocking_issues[].issue` text when `id` is absent) is unchanged from the previous round. Do NOT dispatch another executor turn — this is a stalled goal, not an effort problem; surface the aggregator's last `next_action_hint` and the unchanged BLOCKERs.
+- **Scope-violation revise** if `scope_violation.detected == true`. Loop back to Phase 2 with `--task` instructing the executor to revert the listed out-of-scope changes (paths from `scope_violation.paths`) before any further work. This branch overrides convergence signals — out-of-scope writes are never accepted.
 - **Loop back to Phase 2** otherwise. Pass the aggregator's `next_action_hint` into the executor's `--task` so it knows what to fix.
+- **Budget hit** — if any of `max-rounds`, `max-turns`, or `max-wallclock` from Phase 0 is exceeded after evaluating this round, escalate immediately with the latest verdict; do not start another round.
 - **Escalate to user** if `convergence_status` is `stalled` for two consecutive rounds, or `regressed`. Loops that don't converge are a planner / model-capability problem, not an executor effort problem; surface this rather than burning more rounds.
 
 ## Red flags / Stop when

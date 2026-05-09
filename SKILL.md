@@ -36,8 +36,9 @@ Proposed dispatch
   Actor   : <actor>  →  model: <model-id>
   Effort  : <low | medium | high>
   Multi?  : <single turn | N parallel>
+  Budget  : <max-rounds=N | max-turns=M | max-wallclock=Xm>  (optional; default: 3 rounds, no clock cap)
 
-Proceed? Or adjust actor / effort / go multi?
+Proceed? Or adjust actor / effort / budget / go multi?
 ```
 
 Sub-skills cite this block by name. Do not duplicate it elsewhere.

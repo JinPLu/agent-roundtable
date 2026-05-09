@@ -14,6 +14,15 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 **Hand-off**: <accept | revise: <who> on <what> | escalate-to-user: <question>>
 ```
 
+## Self-critique pass (mandatory, within-turn)
+Before emitting the five-part body above, do a single in-turn devil's-advocate pass — empirically a within-turn critic step measurably improves output quality (arXiv 2405.09935):
+
+1. List `GOAL.md`'s acceptance criteria as a checklist.
+2. For each item, ask: "what is one way this implementation could be wrong?"
+3. If any answer surfaces a real risk, fix it in the working tree and re-run the relevant verification commands; otherwise add the line `self-critique: no new risks surfaced` inside the `Verification` block.
+
+The output format above is unchanged — the self-critique runs before you write the body.
+
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md).
 - **Context hygiene**: if you discover new architectural rules, conventions, or persistent project facts, you MUST update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.

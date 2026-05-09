@@ -119,3 +119,7 @@ The following capabilities must NOT regress; each is preserved by the refactor:
 - [ ] README.md ≤ 90 lines, Chinese, ≤ 2 emoji total.
 - [ ] All scripts still parse (`bash -n`).
 - [ ] Every capability in §4 is reachable from the new structure.
+
+---
+
+Applied 2026-05-10: surgical operational fixes from `docs/research/AGENT_LOOPS-2026-05-10.md` §4.4 — README citation re-pointed to arXiv 2604.07650; Phase 5 fast-fail + Budget knob; executor within-turn self-critique; aggregator `scope_violation` auto-check. See commit on `origin/main` immediately following research commit `bf42d20f`.

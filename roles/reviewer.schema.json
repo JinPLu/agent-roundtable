@@ -87,8 +87,34 @@
     },
     "evidence_delta_vs_prior_round": {
       "type": "string",
+      "enum": ["new", "partial", "none", "n/a-first-round"],
+      "description": "Convergence-loop mode only. Discrete classification of how this round's evidence differs from the prior round's reviewer verdict. 'new' = materially fresh evidence (artifact / failure shape / metric); 'partial' = some movement but key gaps unchanged; 'none' = no new evidence at all (loop-controller fast-fail signal — see roundtable-develop Phase 5); 'n/a-first-round' = no prior round to compare against. Use evidence_delta_notes for free-form context."
+    },
+    "evidence_delta_notes": {
+      "type": "string",
       "maxLength": 4000,
-      "description": "Convergence-loop mode only. Free-form one-paragraph note on what changed (in the artifact, in the failure shape, in the metric) versus the prior round's reviewer verdict."
+      "description": "Convergence-loop mode only. Optional free-form one-paragraph note describing what specifically changed (or did not) versus the prior round's verdict."
+    },
+    "scope_violation": {
+      "type": "object",
+      "description": "Reviewer-aggregator mode only. Result of comparing executor-touched paths against GOAL.md 'In-scope paths'. When detected == true the aggregator's verdict MUST be 'revise' regardless of other signals.",
+      "required": ["detected", "paths", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "detected": {
+          "type": "boolean",
+          "description": "True iff git diff --stat against the thread-base-sha touched any path outside GOAL.md In-scope paths."
+        },
+        "paths": {
+          "type": "array",
+          "description": "Offending paths (relative to repo root). Empty when detected == false.",
+          "items": {"type": "string"}
+        },
+        "notes": {
+          "type": "string",
+          "description": "One-sentence aggregator note (e.g. command run, why a touched path is out of scope, suggested revert target). Empty string when detected == false."
+        }
+      }
     },
     "dissenting_concerns": {
       "type": "array",
