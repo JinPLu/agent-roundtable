@@ -65,9 +65,9 @@ if [[ -z "$model" ]]; then
   eval "$( resolve_model claude "$role" "" "$effort" )"
 fi
 
-# Permission-mode: reviewer-likes get plan (read-only); others get acceptEdits.
+# Permission-mode: reviewer-likes + planner get plan (read-only); others get acceptEdits.
 case "$role" in
-  reviewer|reviewer-aggregator|devils-advocate) perm="plan";;
+  reviewer|reviewer-aggregator|devils-advocate|planner) perm="plan";;
   *) perm="acceptEdits";;
 esac
 
@@ -141,11 +141,11 @@ fi
 [[ -n "$_sys_prompt" ]] && _args+=( --append-system-prompt "$_sys_prompt" )
 
 # Per-role tool surface — minimal disablement principle.
-# Reviewer-likes get write protection via --permission-mode plan; no allowlist.
-# Executor / planner / discussant: only destructive git operations are blocked.
+# Reviewer-likes + planner get write protection via --permission-mode plan; no allowlist.
+# Executor / discussant: only destructive git operations are blocked.
 _tools=()
 case "$role" in
-  reviewer|reviewer-aggregator|devils-advocate) : ;;
+  reviewer|reviewer-aggregator|devils-advocate|planner) : ;;
   *)
     _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
 esac
@@ -180,6 +180,15 @@ if [[ -s "${hist}/last.json" ]]; then
       "${hist}/last.json" > "${hist}/last.md" 2>/dev/null || true
   fi
   [[ -s "${hist}/last.md" ]] || cp "${hist}/last.json" "${hist}/last.md"
+fi
+
+# Planner + plan mode cannot write artifacts/ — capture extracted stdout into thread artifacts for operators.
+_plan_art=""
+if [[ "$role" == "planner" && "$perm" == "plan" && -s "${hist}/last.md" ]]; then
+  mkdir -p "${thread_dir}/artifacts"
+  _plan_art="${thread_dir}/artifacts/plan-claude-${ts_c}.md"
+  cp "${hist}/last.md" "${_plan_art}"
+  echo "plan_artifact=${_plan_art}" >&2
 fi
 
 _ts=$(iso_now)
