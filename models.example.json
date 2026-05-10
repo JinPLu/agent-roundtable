@@ -1,40 +1,43 @@
 {
   "version": 10,
   "_readme": [
-    "agent-roundtable model registry — minimal template + pre-researched entries.",
+    "agent-roundtable model registry \u2014 minimal template + pre-researched entries.",
     "",
     "Workflow:",
-    "  1. `scripts/backend.sh init` copies this file to models.json (chmod 600, gitignored).",
-    "  2. Open models.json. For each model you want to use, fill `endpoint.api_key` (some entries",
-    "     also need `endpoint.base_url` if you're using a proxy). Set `active.codex` and/or",
-    "     `active.claude` to the model id you want each CLI to use.",
-    "  3. `scripts/backend.sh apply` to write .codex_env.local / .claude_env.local.",
+    "  1. `scripts/backend.sh init` copies this file to models.json (chmod 600, gitignored)",
+    "     AND models.secrets.example.json to models.secrets.json (chmod 600, gitignored).",
+    "  2. Open models.secrets.json \u2014 for each model you want to use, add an entry like",
+    "     `\"<model_id>\": { \"api_key\": \"sk-...\" }` keyed by the EXACT model_id you'll",
+    "     activate (e.g. \"gpt-5.5\" or \"claude-4.7-opus\"). Set models.json `active.codex`",
+    "     and/or `active.claude` to that same model id.",
+    "  3. `scripts/backend.sh apply` joins models.json + models.secrets.json by model_id",
+    "     and writes .codex_env.local / .claude_env.local.",
     "",
     "Three classes of entries are shipped below:",
-    "  A. cursor-* entries — auth via Cursor IDE, no key required, ready to dispatch.",
+    "  A. cursor-* entries \u2014 auth via Cursor IDE, no key required, ready to dispatch.",
     "  B. BYOK pre-researched entries (gpt-5.5, gpt-5.3-codex, claude-4.7-opus,",
-    "     claude-4.6-sonnet) — capabilities (context window, benchmarks, cli_arg) filled",
-    "     from upstream docs. You drop in your api_key. Pricing carries an _as_of date;",
-    "     see PRICING FRESHNESS below.",
-    "  C. _template — generic placeholder for any other endpoint (custom proxy, vLLM, …).",
+    "     claude-4.6-sonnet) \u2014 capabilities (context window, benchmarks, cli_arg) filled",
+    "     from upstream docs. You add the api_key in models.secrets.json, NOT here.",
+    "     Pricing carries an _as_of date; see PRICING FRESHNESS below.",
+    "  C. _template \u2014 generic placeholder for any other endpoint (custom proxy, vLLM, \u2026).",
     "     Rename the key (entries starting with `_` are skipped by `apply`).",
     "",
     "PRICING FRESHNESS CONTRACT:",
     "  Capability fields (context_window_k, benchmarks, cli_arg) are stable post-release.",
-    "  Prices are NOT — vendors adjust list rates, proxies re-mark, plan tiers shift,",
+    "  Prices are NOT \u2014 vendors adjust list rates, proxies re-mark, plan tiers shift,",
     "  contracts negotiate. The shipped pricing is a SNAPSHOT, not authoritative.",
     "",
     "  Every `pricing` block carries `_as_of` (YYYY-MM-DD). Convention for the chat parent:",
-    "    - if pricing is null OR `_as_of` is missing  → WebSearch and fill before dispatch.",
-    "    - if `_as_of` is older than 30 days          → WebSearch and refresh, or ask user.",
-    "    - if user pinned a price with `_pinned: true` → never auto-refresh.",
-    "    - if `endpoint.base_url` points to a proxy   → ALWAYS re-research (proxy pricing",
+    "    - if pricing is null OR `_as_of` is missing  \u2192 WebSearch and fill before dispatch.",
+    "    - if `_as_of` is older than 30 days          \u2192 WebSearch and refresh, or ask user.",
+    "    - if user pinned a price with `_pinned: true` \u2192 never auto-refresh.",
+    "    - if `endpoint.base_url` points to a proxy   \u2192 ALWAYS re-research (proxy pricing",
     "      diverges 10-100x from vendor list, e.g. cialloapi GPT-5.5 is ~70x cheaper).",
     "  Or simply: ask the user to provide current pricing for cost-sensitive routing.",
     "",
-    "The api_key never enters chat or agent context — it is read by the python subprocess",
-    "inside `apply` and written via `printf %q` to the env file. `backend.sh show` redacts",
-    "it everywhere."
+    "SECRETS LIVE IN models.secrets.json (chmod 600, gitignored), KEYED BY model_id.",
+    "models.json (this template's clone) holds NO api_key \u2014 it's read into prompts and",
+    "would otherwise leak. Joined at apply-time only. See models.secrets.example.json."
   ],
   "active": {
     "codex": null,
@@ -42,17 +45,16 @@
   },
   "models": {
     "_template": {
-      "_status": "Generic placeholder. Rename key (e.g. to `my-vllm-llama4`), pick actor=codex|claude, fill cli_arg + endpoint. Entries whose key starts with `_` are skipped by `apply`.",
+      "_status": "Generic placeholder. Rename key (e.g. to `my-vllm-llama4`), pick actor=codex|claude, fill cli_arg + endpoint.base_url, then add api_key under the SAME key in models.secrets.json. Entries whose key starts with `_` are skipped by `apply`.",
       "actor": "REPLACE_WITH:codex_or_claude",
       "cli_arg": "REPLACE_WITH:the-exact-model-id-the-api-expects",
       "endpoint": {
         "base_url": "REPLACE_WITH:https://api.example.com/v1",
-        "api_key": "REPLACE_WITH:sk-...",
         "_claude_shim_doc": "If actor=claude on an Anthropic-compat shim, also set opus_model, sonnet_model, haiku_model, and (optional) claude_effort_level."
       }
     },
     "gpt-5.5": {
-      "_status": "Pre-researched OpenAI direct. Fill endpoint.api_key with your sk-... key. Swap base_url to a discount proxy (cialloapi, openrouter, …) if you don't have direct OpenAI access — the agent will re-research proxy pricing before apply.",
+      "_status": "Pre-researched OpenAI direct. Add api_key in models.secrets.json keyed by this model_id. Swap base_url to a discount proxy (cialloapi, openrouter, \u2026) if you don't have direct OpenAI access \u2014 the agent will re-research proxy pricing before apply.",
       "actor": "codex",
       "cli_arg": "gpt-5.5",
       "provider": "openai-direct",
@@ -79,12 +81,11 @@
         "source": "https://developers.openai.com/api/docs/models/gpt-5.5"
       },
       "endpoint": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "REPLACE_WITH:sk-..."
+        "base_url": "https://api.openai.com/v1"
       }
     },
     "gpt-5.3-codex": {
-      "_status": "Pre-researched OpenAI direct. Codex-tuned variant — cheaper and explicitly optimized for terminal/agent tasks.",
+      "_status": "Pre-researched OpenAI direct. Codex-tuned variant \u2014 cheaper and explicitly optimized for terminal/agent tasks.",
       "actor": "codex",
       "cli_arg": "gpt-5.3-codex",
       "provider": "openai-direct",
@@ -109,12 +110,11 @@
         "source": "https://platform.openai.com/docs/models/gpt-5-codex"
       },
       "endpoint": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key": "REPLACE_WITH:sk-..."
+        "base_url": "https://api.openai.com/v1"
       }
     },
     "claude-4.7-opus": {
-      "_status": "Pre-researched Anthropic direct. Anthropic Apr 2026 flagship. Fill endpoint.api_key. For an Anthropic-compat shim (DeepSeek-compat, Bedrock-compat) swap base_url and add opus_model/sonnet_model/haiku_model/claude_effort_level.",
+      "_status": "Pre-researched Anthropic direct. Anthropic Apr 2026 flagship. Add api_key in models.secrets.json keyed by this model_id. For an Anthropic-compat shim (DeepSeek-compat, Bedrock-compat) swap base_url and add opus_model/sonnet_model/haiku_model/claude_effort_level.",
       "actor": "claude",
       "cli_arg": "claude-opus-4-7",
       "provider": "anthropic-direct",
@@ -144,7 +144,6 @@
       },
       "endpoint": {
         "base_url": "https://api.anthropic.com",
-        "api_key": "REPLACE_WITH:sk-ant-...",
         "opus_model": "claude-opus-4-7",
         "sonnet_model": "claude-sonnet-4-6",
         "haiku_model": "claude-haiku-4-5",
@@ -152,7 +151,7 @@
       }
     },
     "claude-4.6-sonnet": {
-      "_status": "Pre-researched Anthropic direct. Workhorse Sonnet — Opus-tier on many tasks at Sonnet pricing. Fill endpoint.api_key.",
+      "_status": "Pre-researched Anthropic direct. Workhorse Sonnet \u2014 Opus-tier on many tasks at Sonnet pricing. Add api_key in models.secrets.json keyed by this model_id.",
       "actor": "claude",
       "cli_arg": "claude-sonnet-4-6",
       "provider": "anthropic-direct",
@@ -179,7 +178,6 @@
       },
       "endpoint": {
         "base_url": "https://api.anthropic.com",
-        "api_key": "REPLACE_WITH:sk-ant-...",
         "opus_model": "claude-opus-4-7",
         "sonnet_model": "claude-sonnet-4-6",
         "haiku_model": "claude-haiku-4-5",
@@ -300,15 +298,35 @@
       }
     }
   },
-  "_role_defaults_note": "Cheap-first: bulk work (executor, reviewer fan-out, triage, compaction) uses cheapest capable model. reviewer-aggregator is the only role that defaults to the expensive cursor-claude-4.7-opus — it synthesizes N parallel reviewer verdicts into one canonical judgment. Cross-vendor fan-out (composer-2 + gemini + sonnet) costs ~same as one cursor-claude-4.7-opus turn but delivers cross-vendor diversity. When you import BYOK models, the chat parent adds them to appropriate tiers.",
+  "_role_defaults_note": "Cheap-first: bulk work (executor, reviewer fan-out, triage, compaction) uses cheapest capable model. reviewer-aggregator is the only role that defaults to the expensive cursor-claude-4.7-opus \u2014 it synthesizes N parallel reviewer verdicts into one canonical judgment. Cross-vendor fan-out (composer-2 + gemini + sonnet) costs ~same as one cursor-claude-4.7-opus turn but delivers cross-vendor diversity. When you import BYOK models, the chat parent adds them to appropriate tiers.",
   "role_defaults": {
-    "triage":              ["cursor-composer-2"],
-    "discussant":          ["cursor-composer-2", "cursor-gemini-3.1-pro"],
-    "planner":             ["cursor-gemini-3.1-pro", "cursor-claude-4.6-sonnet"],
-    "executor":            ["cursor-composer-2"],
-    "executor-heavy":      ["cursor-claude-4.6-sonnet"],
-    "reviewer":            ["cursor-composer-2", "cursor-gemini-3.1-pro", "cursor-claude-4.6-sonnet"],
-    "reviewer-aggregator": ["cursor-claude-4.7-opus"],
-    "compactor":           ["cursor-composer-2"]
+    "triage": [
+      "cursor-composer-2"
+    ],
+    "discussant": [
+      "cursor-composer-2",
+      "cursor-gemini-3.1-pro"
+    ],
+    "planner": [
+      "cursor-gemini-3.1-pro",
+      "cursor-claude-4.6-sonnet"
+    ],
+    "executor": [
+      "cursor-composer-2"
+    ],
+    "executor-heavy": [
+      "cursor-claude-4.6-sonnet"
+    ],
+    "reviewer": [
+      "cursor-composer-2",
+      "cursor-gemini-3.1-pro",
+      "cursor-claude-4.6-sonnet"
+    ],
+    "reviewer-aggregator": [
+      "cursor-claude-4.7-opus"
+    ],
+    "compactor": [
+      "cursor-composer-2"
+    ]
   }
 }

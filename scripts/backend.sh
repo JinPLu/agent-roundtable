@@ -239,6 +239,15 @@ p = pathlib.Path(sys.argv[1])
 data = json.loads(p.read_text())
 active = (data.get("active") or {})
 models = (data.get("models") or {})
+# Load sibling models.secrets.json (chmod 600, gitignored) for endpoint detection.
+# Joined by exact model_id — see apply block for rationale.
+_secrets = {}
+_secrets_path = p.parent / "models.secrets.json"
+if _secrets_path.exists():
+    try:
+        _secrets = json.loads(_secrets_path.read_text())
+    except Exception:
+        _secrets = {}
 
 # ── Header ────────────────────────────────────────────────────────────────
 suffix = "" if p.name == "models.json" else f"  (fallback: {p.name})"
@@ -260,17 +269,17 @@ for actor in ("codex", "claude"):
         continue
     ep = m.get("endpoint") or {}
     base, key = ep.get("base_url", ""), ep.get("api_key", "")
-    key_ref = ep.get("api_key_ref", "")
     cli = m.get("cli_arg", mid)
+    sec_key = (_secrets.get(mid) or {}).get("api_key", "")
     if _is_placeholder(base) or _is_placeholder(key) or _is_placeholder(m.get("actor", "")):
         print(f"  {actor:<7}  ⚠  PLACEHOLDER    model={mid!r} still has REPLACE_WITH:* fields — fill them in")
         continue
-    has_key = bool(key or key_ref)
+    has_key = bool(key or sec_key)
     if base and has_key:
         print(f"  {actor:<7}  ✅ IMPORTED       model={mid!r}  cli_arg={cli!r}")
         print(f"           {'':<17}base_url={base}")
     else:
-        missing = [lbl for lbl, v in (("base_url", base), ("api_key/api_key_ref", has_key)) if not v]
+        missing = [lbl for lbl, v in (("base_url", base), ("api_key (in models.json or models.secrets.json)", has_key)) if not v]
         print(f"  {actor:<7}  ⚠  INCOMPLETE     model={mid!r} — endpoint missing: {','.join(missing) or 'whole block'}")
 
 # ── Catalog table ────────────────────────────────────────────────────────
@@ -290,10 +299,10 @@ else:
         else:
             ep = m.get("endpoint") or {}
             base, key = ep.get("base_url", ""), ep.get("api_key", "")
-            key_ref = ep.get("api_key_ref", "")
+            sec_key = (_secrets.get(mid) or {}).get("api_key", "")
             if _is_placeholder(base) or _is_placeholder(key):
                 ep_status = "⚠ PLACEHOLDER (fill in)"
-            elif base and (key or key_ref):
+            elif base and (key or sec_key):
                 ep_status = "endpoint set"
             elif ep:
                 ep_status = "endpoint partial"
@@ -344,14 +353,22 @@ case "$cmd" in
       # placeholder unedited and no codex/claude entry credentialed).
       mf="$(_models_file)"
       if python3 -c "
-import json, sys
-d = json.load(open('$mf'))
+import json, sys, pathlib
+mf_path = pathlib.Path('$mf')
+d = json.loads(mf_path.read_text())
+sp = mf_path.parent / 'models.secrets.json'
+secrets = {}
+if sp.exists():
+    try:
+        secrets = json.loads(sp.read_text())
+    except Exception:
+        pass
 real = [
   k for k, m in (d.get('models') or {}).items()
   if not k.startswith('_')
   and isinstance(m, dict)
   and ((m.get('endpoint') or {}).get('api_key', '').strip()
-       or (m.get('endpoint') or {}).get('api_key_ref', '').strip())
+       or (secrets.get(k) or {}).get('api_key', '').strip())
   and not (m.get('endpoint') or {}).get('api_key', '').startswith('REPLACE_WITH')
 ]
 sys.exit(0 if not real else 1)
@@ -524,33 +541,37 @@ for actor in targets:
     if declared_actor and declared_actor != actor:
         print(f"WARN  {actor}: model {mid!r} is registered as actor={declared_actor!r}", file=sys.stderr)
     ep = m.get("endpoint") or {}
-    base, key = ep.get("base_url", ""), ep.get("api_key", "")
-    key_ref = ep.get("api_key_ref", "")
-    if base.startswith("REPLACE_WITH") or key.startswith("REPLACE_WITH"):
+    base = ep.get("base_url", "")
+    inline_key = ep.get("api_key", "")  # legacy inline secret (deprecated)
+    if base.startswith("REPLACE_WITH") or inline_key.startswith("REPLACE_WITH"):
         print(f"SKIP {actor}: model {mid!r} endpoint still has REPLACE_WITH:* placeholder values.", file=sys.stderr); continue
-    if key_ref:
-        if not key_ref.startswith("secrets:"):
-            print(f"ERROR: api_key_ref={key_ref!r} is not a 'secrets:' reference", file=sys.stderr); sys.exit(2)
-        rest = key_ref[len("secrets:"):]
-        # Split from the RIGHT — model_ids may contain dots (e.g. gpt-5.5)
-        parts = rest.rsplit(".", 1)
-        if len(parts) != 2:
-            print(f"ERROR: api_key_ref={key_ref!r} malformed; expected 'secrets:<model_id>.<key>'", file=sys.stderr); sys.exit(2)
-        ref_model_id, ref_key_name = parts
-        secrets_path = pathlib.Path(mf).parent / "models.secrets.json"
-        if not secrets_path.exists():
-            print(f"ERROR: api_key_ref points to {key_ref!r} but models.secrets.json missing/incomplete. Run 'backend.sh init' or create models.secrets.json manually.", file=sys.stderr); sys.exit(2)
+    # Canonical path: look up by exact model_id in models.secrets.json
+    # (avoids the dot-namespace footgun: model_ids like "gpt-5.5" contain dots,
+    # so any "secrets:<id>.<key>" composite-string scheme is fragile. JSON map
+    # keys preserve any character — joining by model_id is robust. Pattern
+    # mirrors LiteLLM's split between model registry and runtime credentials,
+    # and Kubernetes secretKeyRef's two-field structure.)
+    secrets_path = pathlib.Path(mf).parent / "models.secrets.json"
+    sec_key = ""
+    if secrets_path.exists():
         try:
             secrets = json.loads(secrets_path.read_text())
+            sec_key = (secrets.get(mid) or {}).get("api_key", "")
         except Exception as e:
             print(f"ERROR: failed to parse models.secrets.json: {e}", file=sys.stderr); sys.exit(2)
-        key = (secrets.get(ref_model_id) or {}).get(ref_key_name, "")
-        if not key:
-            print(f"ERROR: api_key_ref points to {key_ref!r} but models.secrets.json missing/incomplete. Run 'backend.sh init' or create models.secrets.json manually.", file=sys.stderr); sys.exit(2)
-    elif key:
-        print(f"WARN [backend.sh]: endpoint.api_key in models.json is deprecated; move to models.secrets.json.", file=sys.stderr)
+    if sec_key:
+        if inline_key:
+            print(f"WARN [backend.sh]: {mid} has both endpoint.api_key (deprecated) and models.secrets.json[{mid!r}].api_key; using secrets file.", file=sys.stderr)
+        key = sec_key
+    elif inline_key:
+        print(f"WARN [backend.sh]: {mid}.endpoint.api_key in models.json is deprecated; move to models.secrets.json[{mid!r}].api_key.", file=sys.stderr)
+        key = inline_key
+    else:
+        key = ""
+    if ep.get("api_key_ref"):
+        print(f"WARN [backend.sh]: {mid}.endpoint.api_key_ref is no longer parsed; api_key now joined by model_id from models.secrets.json directly. Field is ignored.", file=sys.stderr)
     if not base or not key:
-        print(f"SKIP {actor}: model {mid!r} has no endpoint.base_url or api_key set", file=sys.stderr); continue
+        print(f"SKIP {actor}: model {mid!r} has no base_url or api_key (checked endpoint.api_key + models.secrets.json[{mid!r}])", file=sys.stderr); continue
     cli_arg = m.get("cli_arg", mid)
     if actor == "claude":
         op_model = ep.get("opus_model") or ep.get("claude_opus_model") or cli_arg
@@ -673,19 +694,17 @@ for actor in targets:
     ep = m.get("endpoint") or {}
     base, key = ep.get("base_url", ""), ep.get("api_key", "")
     cli_arg = m.get("cli_arg") or mid
+    if not key:
+        # Canonical path: secrets.json keyed by model_id (see apply block for rationale).
+        sp = pathlib.Path(mf).parent / "models.secrets.json"
+        if sp.exists():
+            try:
+                sec = json.loads(sp.read_text())
+                key = (sec.get(mid) or {}).get("api_key", "")
+            except Exception:
+                pass
     if not base or not key:
-        # Try secrets.json for api_key_ref
-        ref = ep.get("api_key_ref", "")
-        if ref.startswith("secrets:"):
-            sp = pathlib.Path(mf).parent / "models.secrets.json"
-            if sp.exists():
-                rest = ref[len("secrets:"):]
-                parts = rest.rsplit(".", 1)
-                if len(parts) == 2:
-                    sec = json.loads(sp.read_text())
-                    key = (sec.get(parts[0]) or {}).get(parts[1], "")
-        if not base or not key:
-            print(f"SKIP {actor}: model={mid!r} missing base_url or api_key"); continue
+        print(f"SKIP {actor}: model={mid!r} missing base_url or api_key"); continue
     print(f"VALIDATE {actor}: {base!r} model={cli_arg!r} ... ", end="", flush=True)
     ok, msg = _smoke(actor, base, key, cli_arg)
     print("OK" if ok else "FAIL")
