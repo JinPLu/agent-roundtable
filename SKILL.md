@@ -15,11 +15,10 @@ Read the sub-skill that matches the user's intent **before** taking any action. 
 | Intent | Sub-skill |
 |--------|-----------|
 | Configure / set API keys / generate `AGENTS.md` for a fresh checkout | `skills/roundtable-setup/SKILL.md` |
-| Open-ended design question — surface options across vendors, no recommendation | `skills/roundtable-discuss/SKILL.md` |
-| N parallel planners draft approaches; aggregator synthesizes a master plan | `skills/roundtable-plan/SKILL.md` |
+| Open-ended design question, architecture/planning, or cross-vendor research → options then executable plan | `skills/roundtable-plan/SKILL.md` |
 | Cross-vendor blind review, audit, PR check — verdict only, no code changes | `skills/roundtable-review/SKILL.md` |
-| N parallel executors implement the SAME task; aggregator picks the best candidate | `skills/roundtable-execute/SKILL.md` |
-| Single executor + parallel blind review, iterate to convergence on a fixed goal | `skills/roundtable-goal/SKILL.md` |
+| Single executor implements `artifacts/PLAN.md` / `GOAL.md`; scope check after diff | `skills/roundtable-execute/SKILL.md` |
+| Orchestrated plan → execute → review loops with budget / stall / scope control | `skills/roundtable-goal/SKILL.md` |
 
 ## Hard rules (apply to every sub-skill)
 
