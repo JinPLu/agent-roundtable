@@ -309,6 +309,22 @@ PY
     # ── 8. YOUR ROLE THIS TURN ───────────────────────────────────────────────
     printf '## Your role this turn\n`%s`\n\n' "$role"
 
+    # ── 8a. MODEL IDENTITY (injected when ROUNDTABLE_MODEL_ALIAS is set) ─────
+    if [[ -n "${ROUNDTABLE_MODEL_ALIAS:-}" ]]; then
+      python3 - "${SKILL_DIR}/models.json" "$ROUNDTABLE_MODEL_ALIAS" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1])).get("models", {}).get(sys.argv[2])
+if m:
+    print("## Your Model Identity")
+    print(f"You are operating as **{sys.argv[2]}**.")
+    if m.get("underlying"): print(f"- Underlying: {m['underlying']}")
+    if m.get("capabilities"): print(f"- Capabilities: {m['capabilities']}")
+    if m.get("best_for"): print(f"- Best for: {', '.join(m['best_for'])}")
+    if m.get("pricing"): print(f"- Pricing: {m['pricing']}")
+    print()
+PY
+    fi
+
     # ── 8b. ROLE GUIDELINES (injected when role system prompt file exists) ───
     # For claude_turn.sh this is redundant (system prompt sent via --append-system-prompt);
     # for codex_turn.sh and cursor subagents this is the only delivery path.
