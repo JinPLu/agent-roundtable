@@ -66,9 +66,20 @@ if [[ -z "$model" ]]; then
   eval "$( resolve_model claude "$role" "" "$effort" )"
 fi
 
-# Permission-mode: reviewer-likes + planner get plan (read-only); others get acceptEdits.
+# Permission-mode (per Anthropic headless / dontAsk research, 2026-05-11):
+# - reviewer-likes + planner -> plan (read-only)
+# - executor / executor-fast -> dontAsk (only allow-listed tools run; rest are
+#   denied without prompt). headless `claude -p` cannot answer permission
+#   prompts, so default / acceptEdits effectively deny most Bash. dontAsk is
+#   the documented CI / autonomous-agent pattern: explicit allow + explicit
+#   deny, no interactive fallback.
+# - other roles (discussant, researcher, researcher-deep) -> acceptEdits as
+#   a sensible middle ground for now (mostly file-read + light writes).
+# Allow/deny lists live in $cwd/.claude/settings.json (NOT under --add-dir;
+# Anthropic docs: --add-dir paths do not contribute settings/hooks).
 case "$role" in
   reviewer|reviewer-aggregator|devils-advocate|planner) perm="plan";;
+  executor|executor-fast|executor-heavy)               perm="dontAsk";;
   *) perm="acceptEdits";;
 esac
 
@@ -172,24 +183,37 @@ if [[ -f "$role_sys" ]]; then
 fi
 [[ -n "$_sys_prompt" ]] && _args+=( --append-system-prompt "$_sys_prompt" )
 
-# Per-role tool surface — minimal disablement principle.
-# Reviewer-likes + planner get write protection via --permission-mode plan; no allowlist.
-# Executor / discussant: only destructive git operations + secret reads are blocked.
+# Per-role tool surface — settings.json is the source of truth.
 #
-# Preferred path: <project>/.claude/settings.json carries the deny list (template
-# at $SKILL_DIR/templates/.claude/settings.json, copied by roundtable-setup).
-# When that file is present we skip the inline --disallowedTools fallback — the
-# settings file already covers the same surface and is project-level / source-
-# controllable. The inline list remains as a safety net for bare projects.
+# Permission allow/deny rules live in <project_cwd>/.claude/settings.json.
+# Anthropic docs: --add-dir does NOT contribute settings, so the file MUST
+# exist at the cwd claude is invoked from. roundtable-setup copies the
+# template there; skill repo also ships its own .claude/settings.json so
+# audits run against the skill itself work.
+#
+# We do NOT pass --disallowedTools as inline fallback anymore:
+#   - executor / dontAsk: needs explicit allow rules (.claude/settings.json
+#     permissions.allow); inline disallowedTools cannot grant Bash, only deny.
+#   - reviewer-likes / plan: --permission-mode plan locks reads anyway.
+#   - other roles / acceptEdits: settings.json deny rules still apply.
+# If the cwd is missing .claude/settings.json the executor's dontAsk run will
+# refuse most Bash; surface that loudly so users run roundtable-setup.
 _tools=()
 _proj_claude_settings="${_cwd}/.claude/settings.json"
 case "$role" in
   reviewer|reviewer-aggregator|devils-advocate|planner) : ;;
+  executor|executor-fast|executor-heavy)
+    if [[ -f "$_proj_claude_settings" ]]; then
+      echo "INFO [claude_turn.sh]: project .claude/settings.json present (cwd=${_cwd}); permission allow/deny applied." >&2
+    else
+      echo "WARN [claude_turn.sh]: no .claude/settings.json at cwd=${_cwd}; executor under dontAsk will deny most Bash. Run roundtable-setup or copy templates/.claude/settings.json." >&2
+    fi
+    ;;
   *)
     if [[ -f "$_proj_claude_settings" ]]; then
-      echo "INFO [claude_turn.sh]: project .claude/settings.json present; skipping inline --disallowedTools fallback." >&2
+      echo "INFO [claude_turn.sh]: project .claude/settings.json present (cwd=${_cwd}); permission deny rules applied." >&2
     else
-      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*) Read(./.env*) Read(./**/.env*) Read(~/.aws/**) Read(~/.ssh/**) Read(**/credentials*) Read(**/*secret*) Read(**/*.pem)" )
+      echo "WARN [claude_turn.sh]: no .claude/settings.json at cwd=${_cwd}; destructive git/secret-read deny rules NOT in effect. Run roundtable-setup." >&2
     fi
     ;;
 esac
