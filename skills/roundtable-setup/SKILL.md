@@ -26,28 +26,32 @@ Agent CLIs explore from their CWD on every turn. Without project context files a
 
 ## The process
 
-### 0. Confirm the project root (REQUIRED — ask the user verbatim)
+### 0. Confirm the project root (REQUIRED)
 
-Before any other step, the chat parent MUST ask the user:
+Use the `AskQuestion` tool — do NOT emit prose. Pre-fill the candidates from `git rev-parse --show-toplevel` and any open IDE folders so the user clicks instead of typing.
 
-> **"What's the absolute path of your PROJECT root (the codebase you want to run roundtable against)? It must NOT be the skill itself (`~/.cursor/skills/agent-roundtable`)."**
-
-Then export it for the session:
-
-```bash
-export ROUNDTABLE_PROJECT_ROOT=<absolute path the user gave>
-[[ -d "$ROUNDTABLE_PROJECT_ROOT" ]] || { echo "ERROR: not a directory: $ROUNDTABLE_PROJECT_ROOT" >&2; }
+```
+AskQuestion(
+  prompt="Which directory is your PROJECT root? (NOT the skill itself.)",
+  options=[
+    {id: "<auto-detected git toplevel>",  label: "<git toplevel> (auto-detected)"},
+    {id: "<currently open folder>",       label: "<currently open folder>"},
+    {id: "__custom__",                    label: "Other — I'll type it"},
+  ],
+)
 ```
 
-Why this is REQUIRED: `_common.sh` auto-detects via `git rev-parse --show-toplevel` if the env var is unset, and falls back to the caller's `cwd`. When the chat parent's cwd happens to be the skill itself (common when answering questions about the skill), the auto-detect lands on the skill — turn scripts emit `WARN [_common.sh]: ROUNDTABLE_PROJECT_ROOT=... is the skill's own directory.` and agents end up exploring the skill instead of the user's project. Asking explicitly costs one round-trip and eliminates the warn-and-pray pattern.
-
-To make it persist across sessions (recommended), tell the user to add to their `~/.bashrc` / `~/.zshrc`:
+If `__custom__`, follow up with a free-form Shell prompt or a second `AskQuestion`. Validate before moving on:
 
 ```bash
-export ROUNDTABLE_PROJECT_ROOT=/path/to/their/project
+export ROUNDTABLE_PROJECT_ROOT=<chosen path>
+[[ -d "$ROUNDTABLE_PROJECT_ROOT" && "$ROUNDTABLE_PROJECT_ROOT" != *"/skills/agent-roundtable"* ]] \
+  || { echo "ERROR: invalid or = skill itself" >&2; }
 ```
 
-Threads then land at `$ROUNDTABLE_PROJECT_ROOT/.roundtable/threads/<slug>/` automatically.
+Threads then land at `$ROUNDTABLE_PROJECT_ROOT/.roundtable/threads/<slug>/`. Persistence (one-time): suggest user add `export ROUNDTABLE_PROJECT_ROOT=...` to `~/.bashrc` / `~/.zshrc`.
+
+Why this is REQUIRED: without the env var, `_common.sh` falls back to `git rev-parse` from the parent's `cwd`. When that cwd is the skill itself (common when answering questions about it), every turn emits `WARN: ROUNDTABLE_PROJECT_ROOT is the skill's own directory` and agents explore the skill, not the user's project.
 
 ### 1. Seed `models.json`
 
