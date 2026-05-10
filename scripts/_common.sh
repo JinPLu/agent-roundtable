@@ -108,6 +108,57 @@ safe_repo_git() {
   timeout 3 git -C "$ROUNDTABLE_REPO_ROOT" --no-optional-locks "$@" 2>/dev/null || true
 }
 
+# ── idle_watchdog ────────────────────────────────────────────────────────────
+# Distinguish "thinking long" from "stuck" by watching a streaming progress
+# file (e.g. codex trace.jsonl, claude stream.jsonl). If the file's size+mtime
+# do not advance for `idle_s` seconds, the watchdog SIGTERMs the target pid
+# (then SIGKILL after 30s grace).
+#
+# Run as a background subshell. The watchdog exits 0 when the target process
+# exits naturally; exits 124 if it had to kill the target.
+#
+# Args: target_pid progress_file idle_s [check_interval_s]
+# Defaults: idle_s=180, check_interval_s=30
+#
+# Usage pattern:
+#   ( codex exec ... > "$hist/trace.jsonl" 2>&1 ) &
+#   _pid=$!
+#   idle_watchdog "$_pid" "$hist/trace.jsonl" "${ROUNDTABLE_IDLE_S:-180}" &
+#   _wd=$!
+#   wait "$_pid"; _ec=$?
+#   kill "$_wd" 2>/dev/null || true
+idle_watchdog() {
+  local target_pid="$1" progress_file="$2"
+  local idle_s="${3:-180}" check_s="${4:-30}"
+  local last_sig="" cur_sig still_idle_s=0
+  while kill -0 "$target_pid" 2>/dev/null; do
+    sleep "$check_s"
+    kill -0 "$target_pid" 2>/dev/null || break
+    if [[ -f "$progress_file" ]]; then
+      cur_sig="$(stat -c '%s:%Y' "$progress_file" 2>/dev/null || echo "0:0")"
+    else
+      cur_sig="missing"
+    fi
+    if [[ "$cur_sig" != "$last_sig" ]]; then
+      last_sig="$cur_sig"
+      still_idle_s=0
+    else
+      still_idle_s=$(( still_idle_s + check_s ))
+    fi
+    if [[ "$still_idle_s" -ge "$idle_s" ]]; then
+      echo "WARN [idle_watchdog]: ${progress_file} silent for ${still_idle_s}s (>= ${idle_s}s); SIGTERM pid=${target_pid}" >&2
+      kill -TERM "$target_pid" 2>/dev/null || true
+      sleep 30
+      if kill -0 "$target_pid" 2>/dev/null; then
+        echo "WARN [idle_watchdog]: pid=${target_pid} still alive after SIGTERM; SIGKILL" >&2
+        kill -KILL "$target_pid" 2>/dev/null || true
+      fi
+      return 124
+    fi
+  done
+  return 0
+}
+
 emit_repo_context() {
   local proj="$ROUNDTABLE_PROJECT_ROOT"
   local branch head

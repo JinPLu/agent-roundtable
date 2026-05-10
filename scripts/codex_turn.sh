@@ -40,7 +40,8 @@ done
 slug="${1:?missing thread slug}"; shift
 role=""; model=""; effort="medium"; blind=0
 task=""; task_file=""
-timeout_s="${ROUNDTABLE_TIMEOUT_S:-1800}"
+timeout_s="${ROUNDTABLE_TIMEOUT_S:-3600}"
+idle_s="${ROUNDTABLE_IDLE_S:-180}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) role="$2"; shift 2;;
@@ -158,19 +159,31 @@ _args=(
 
 _start=$(date +%s)
 set +e
-if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
-  timeout --signal=TERM --kill-after=10 "${timeout_s}" \
+# Run codex in a backgrounded subshell so an idle_watchdog can monitor
+# trace.jsonl (which codex --json streams continuously) and SIGTERM the
+# process if no event arrives for ${idle_s}s. Wall-clock timeout is the
+# fail-safe; idle_watchdog is the primary stuck-detector.
+(
+  if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
+    timeout --signal=TERM --kill-after=10 "${timeout_s}" \
+      codex exec "${_args[@]}" "$(cat "$_prompt")" \
+      < /dev/null > "${hist}/trace.jsonl" 2>&1
+  else
     codex exec "${_args[@]}" "$(cat "$_prompt")" \
-    < /dev/null > "${hist}/trace.jsonl" 2>&1
-else
-  codex exec "${_args[@]}" "$(cat "$_prompt")" \
-    < /dev/null > "${hist}/trace.jsonl" 2>&1
-fi
+      < /dev/null > "${hist}/trace.jsonl" 2>&1
+  fi
+) &
+_proc_pid=$!
+idle_watchdog "$_proc_pid" "${hist}/trace.jsonl" "$idle_s" 30 &
+_wd_pid=$!
+wait "$_proc_pid"
 _ec=$?
+kill "$_wd_pid" 2>/dev/null || true
+wait "$_wd_pid" 2>/dev/null || true
 set -e
 _dur=$(( $(date +%s) - _start ))
 if [[ "$_ec" -eq 124 ]]; then
-  echo "WARN [codex_turn.sh]: codex exec exceeded ${timeout_s}s; killed by timeout (exit 124)." >&2
+  echo "WARN [codex_turn.sh]: codex exec killed (exit 124) — wall-clock ${timeout_s}s or idle ${idle_s}s exceeded." >&2
 fi
 
 # Salvage last.md from trace.jsonl if -o failed to flush.

@@ -40,7 +40,8 @@ done
 slug="${1:?missing thread slug}"; shift
 role=""; model=""; effort="high"; blind=0
 task=""; task_file=""
-timeout_s="${ROUNDTABLE_TIMEOUT_S:-1500}"
+timeout_s="${ROUNDTABLE_TIMEOUT_S:-3600}"
+idle_s="${ROUNDTABLE_IDLE_S:-180}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) role="$2"; shift 2;;
@@ -118,7 +119,11 @@ _prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" 
 
 # Build CLI args. Mount thread_dir + (when set and distinct) ROUNDTABLE_PROJECT_ROOT
 # so agents can actually open project files (.planning/, source code, etc.).
-_args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
+# Use stream-json so an idle_watchdog can monitor stream.jsonl progress and
+# distinguish "thinking long" from "stuck" (per request 2026-05-11). The
+# final {"type":"result", ...} event has the same shape as the old
+# --output-format json blob — extract by tailing for it post-run.
+_args=( -p --output-format stream-json --include-partial-messages --verbose --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
 
 # Per-turn firewall: cap in-turn $/iteration spend so a runaway loop cannot
 # burn the whole roundtable budget (the roundtable parent budget is at
@@ -200,19 +205,50 @@ esac
 
 _start=$(date +%s)
 set +e
-if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
-  ( cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
-      claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" ) \
-    < /dev/null > "${hist}/last.json" 2>"${hist}/stderr.log"
-else
-  ( cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" ) \
-    < /dev/null > "${hist}/last.json" 2>"${hist}/stderr.log"
-fi
+# stream-json output: each line is an event; final line has {"type":"result"}.
+# Stream goes to stream.jsonl (watchable by idle_watchdog); after run we
+# extract the final result event into last.json so downstream extraction
+# (jq / extract_claude_result.py) keeps working unchanged.
+(
+  if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
+    cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
+      claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+      < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+  else
+    cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+      < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+  fi
+) &
+_proc_pid=$!
+idle_watchdog "$_proc_pid" "${hist}/stream.jsonl" "$idle_s" 30 &
+_wd_pid=$!
+wait "$_proc_pid"
 _ec=$?
+kill "$_wd_pid" 2>/dev/null || true
+wait "$_wd_pid" 2>/dev/null || true
 set -e
 _dur=$(( $(date +%s) - _start ))
 if [[ "$_ec" -eq 124 ]]; then
-  echo "WARN [claude_turn.sh]: claude exceeded ${timeout_s}s; killed by timeout (exit 124)." >&2
+  echo "WARN [claude_turn.sh]: claude killed (exit 124) — wall-clock ${timeout_s}s or idle ${idle_s}s exceeded." >&2
+fi
+
+# stream-json post-process: pull the final {"type":"result"} event into last.json.
+if [[ -s "${hist}/stream.jsonl" ]]; then
+  python3 -c '
+import json, sys
+result = None
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line: continue
+    try:
+        obj = json.loads(line)
+    except Exception:
+        continue
+    if obj.get("type") == "result":
+        result = obj
+if result is not None:
+    json.dump(result, open(sys.argv[2], "w"))
+' "${hist}/stream.jsonl" "${hist}/last.json" 2>/dev/null || true
 fi
 
 # Extract final assistant text from last.json into last.md.
