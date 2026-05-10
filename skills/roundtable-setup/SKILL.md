@@ -88,7 +88,7 @@ bash $SKILL/scripts/backend.sh apply
 bash $SKILL/scripts/backend.sh show
 ```
 
-`apply` performs three things in order: (a) **static check** — reject known-bad combinations like `cli_arg: "opus"` paired with a proxy `base_url` (e.g. `claude-api.org`) before writing any file; (b) write `$SKILL/.codex_env.local` and/or `$SKILL/.claude_env.local` (chmod 600); (c) **smoke test** — send one 1-token ping per actor and fail-fast on 4xx/5xx so credential / cli_arg / base_url errors surface in seconds, not after a 600s real turn. Pass `--no-smoke-test` to skip step (c) (offline / air-gapped scenarios). `show` then prints redacted state.
+`apply` performs three things in order: (a) **static check** — reject known-bad combinations like `cli_arg: "opus"` paired with a proxy `base_url` (e.g. `claude-api.org`) before writing any file; (b) write `$SKILL/.codex_env.local` and/or `$SKILL/.claude_env.local` (chmod 600); (c) **smoke test + latency** — send one 1-token ping per actor (and per claude tier model if distinct), record `elapsed_ms`, fail-fast on 4xx/5xx, then print a **latency summary sorted fastest first**. Entries `≥2000 ms` tagged `[SLOW]`, `≥5000 ms` tagged `[VERY SLOW]` — surface these to the user; they often mean the proxy is degraded or geographically far. Pass `--no-smoke-test` to skip step (c) (offline / air-gapped scenarios). `show` then prints redacted state. For a re-check without rewriting env files: `backend.sh validate` (same latency display).
 
 If `apply` rejects a combination at step (a), the error message points at the exact `cli_arg` field to fix — change the short alias to the proxy-precise model id (see Provider quirks below).
 

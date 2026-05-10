@@ -423,7 +423,7 @@ HINT
     mf="${SKILL_DIR}/models.json"
     [[ -r "$mf" ]] || { echo "ERROR: $mf not found. Run: $0 init" >&2; exit 2; }
     python3 - "$mf" "$0" "$only" "$smoke_flag" <<'PY'
-import json, os, sys, subprocess, pathlib, urllib.parse
+import json, os, sys, subprocess, pathlib, time, urllib.parse
 mf, script, only, smoke_flag = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 data = json.loads(pathlib.Path(mf).read_text())
 active = data.get("active") or {}
@@ -534,14 +534,30 @@ def _smoke_claude(base_url: str, api_key: str, model: str) -> tuple[bool, str]:
         return False, f"HTTP {e.code} {e.reason} — body[:500]={body_preview!r}"
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         return False, f"network error: {e!r}"
+def _latency_tag(ms: float) -> str:
+    if ms >= 5000: return "VERY SLOW"
+    if ms >= 2000: return "SLOW"
+    return ""
+
+def _print_smoke_line(ok: bool, ms: float) -> None:
+    tag = _latency_tag(ms)
+    suffix = f"  [{tag}]" if tag else ""
+    print(f"{'OK' if ok else 'FAIL'}  {ms:>6.0f} ms{suffix}")
+
+# Accumulate per-ping timings here so apply can print a sorted summary.
+SMOKE_RESULTS: list[tuple[str, str, bool, float]] = []  # (actor, model, ok, elapsed_ms)
+
 def _run_smoke(actor: str, base: str, key: str, cli_arg: str, claude_extras) -> bool:
-    """Smoke-test one actor; return True if all checks pass."""
+    """Smoke-test one actor; record per-ping latency in SMOKE_RESULTS."""
     print(f"SMOKE {actor}: ping {base!r} model={cli_arg!r} ... ", end="", flush=True)
+    t0 = time.perf_counter()
     if actor == "codex":
         ok, msg = _smoke_codex(base, key, cli_arg)
     else:
         ok, msg = _smoke_claude(base, key, cli_arg)
-    print("OK" if ok else "FAIL")
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    SMOKE_RESULTS.append((actor, cli_arg, ok, elapsed_ms))
+    _print_smoke_line(ok, elapsed_ms)
     print(f"  → {msg}")
     if not ok:
         return False
@@ -554,8 +570,11 @@ def _run_smoke(actor: str, base: str, key: str, cli_arg: str, claude_extras) -> 
                 continue
             seen.add(mid)
             print(f"SMOKE {actor}: ping {base!r} {label}={mid!r} ... ", end="", flush=True)
+            t1 = time.perf_counter()
             ok2, msg2 = _smoke_claude(base, key, mid)
-            print("OK" if ok2 else "FAIL")
+            e2 = (time.perf_counter() - t1) * 1000
+            SMOKE_RESULTS.append((f"{actor}:{label}", mid, ok2, e2))
+            _print_smoke_line(ok2, e2)
             print(f"  → {msg2}")
             if not ok2:
                 return False
@@ -684,6 +703,20 @@ else:
     for actor, base, key, cli_arg, claude_extras in smoked:
         if not _run_smoke(actor, base, key, cli_arg, claude_extras):
             smoke_failed.append(actor)
+    # ── latency summary (sorted fastest first) ──
+    if SMOKE_RESULTS:
+        ok_results = [r for r in SMOKE_RESULTS if r[2]]
+        if ok_results:
+            ok_results.sort(key=lambda r: r[3])
+            print()
+            print("--- latency summary (fastest first) ---")
+            print(f"  {'actor':<18}  {'model':<32}  latency")
+            for actor_label, model, _ok, ms in ok_results:
+                tag = _latency_tag(ms)
+                suffix = f"  [{tag}]" if tag else ""
+                print(f"  {actor_label:<18}  {model:<32}  {ms:>6.0f} ms{suffix}")
+            if any(_latency_tag(r[3]) for r in ok_results):
+                print("  (SLOW ≥2000ms / VERY SLOW ≥5000ms — consider a closer proxy)")
     if smoke_failed:
         print(f"ERROR: smoke test FAILED for: {','.join(smoke_failed)}.", file=sys.stderr)
         print("  The .{actor}_env.local file IS written (apply already returned), but the endpoint did", file=sys.stderr)
@@ -706,7 +739,7 @@ PY
 cli_arg, fail-fast on 4xx/5xx. Does NOT touch .codex_env.local / .claude_env.local
 — this is the dry-run path users invoke between edits to confirm a config
 without overwriting their last-known-good env files."""
-import json, os, sys, pathlib, urllib.parse, urllib.request, urllib.error
+import json, os, sys, pathlib, time, urllib.parse, urllib.request, urllib.error
 mf, only = sys.argv[1], sys.argv[2]
 data = json.loads(pathlib.Path(mf).read_text())
 active = data.get("active") or {}
@@ -751,6 +784,7 @@ def _smoke(actor, base, key, model):
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         return False, f"network error: {e!r}"
 fails = []
+timings: list[tuple[str, str, bool, float]] = []  # (actor_label, model, ok, elapsed_ms)
 for actor in targets:
     if actor not in ("codex", "claude"):
         print(f"ERROR: unknown actor {actor!r}", file=sys.stderr); sys.exit(2)
@@ -773,9 +807,13 @@ for actor in targets:
     if not base or not key:
         print(f"SKIP {actor}: model={mid!r} missing base_url or api_key"); continue
     print(f"VALIDATE {actor}: {base!r} model={cli_arg!r} ... ", end="", flush=True)
+    t0 = time.perf_counter()
     ok, msg = _smoke(actor, base, key, cli_arg)
-    print("OK" if ok else "FAIL")
+    ms = (time.perf_counter() - t0) * 1000
+    tag = "VERY SLOW" if ms >= 5000 else ("SLOW" if ms >= 2000 else "")
+    print(f"{'OK' if ok else 'FAIL'}  {ms:>6.0f} ms{('  [' + tag + ']') if tag else ''}")
     print(f"  → {msg}")
+    timings.append((actor, cli_arg, ok, ms))
     if not ok:
         fails.append(actor)
     if actor == "claude":
@@ -788,11 +826,25 @@ for actor in targets:
                 continue
             seen.add(mm)
             print(f"VALIDATE {actor}: {base!r} {label}={mm!r} ... ", end="", flush=True)
+            t1 = time.perf_counter()
             ok2, msg2 = _smoke(actor, base, key, mm)
-            print("OK" if ok2 else "FAIL")
+            ms2 = (time.perf_counter() - t1) * 1000
+            tag2 = "VERY SLOW" if ms2 >= 5000 else ("SLOW" if ms2 >= 2000 else "")
+            print(f"{'OK' if ok2 else 'FAIL'}  {ms2:>6.0f} ms{('  [' + tag2 + ']') if tag2 else ''}")
             print(f"  → {msg2}")
+            timings.append((f"{actor}:{label}", mm, ok2, ms2))
             if not ok2 and actor not in fails:
                 fails.append(actor)
+ok_timings = [t for t in timings if t[2]]
+if ok_timings:
+    ok_timings.sort(key=lambda t: t[3])
+    print()
+    print("--- latency summary (fastest first) ---")
+    print(f"  {'actor':<18}  {'model':<32}  latency")
+    for actor_label, model, _ok, ms in ok_timings:
+        tag = "VERY SLOW" if ms >= 5000 else ("SLOW" if ms >= 2000 else "")
+        suffix = f"  [{tag}]" if tag else ""
+        print(f"  {actor_label:<18}  {model:<32}  {ms:>6.0f} ms{suffix}")
 if fails:
     print(f"FAIL: {','.join(fails)}", file=sys.stderr)
     sys.exit(3)

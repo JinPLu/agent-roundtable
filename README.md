@@ -45,7 +45,7 @@ plan 改完直接 `/roundtable-execute` 即可，无需手动 re-import。
 ```bash
 git clone … ~/.cursor/skills/agent-roundtable
 ```
-对 Cursor 说 `/roundtable-setup` → 问答走完：选项目根 → 填 `models.json` + API key → `backend.sh apply`（含 smoke test）→ 生成 `AGENTS.md` / `CLAUDE.md` → 拷 `.claude/settings.json` 拒绝列表。
+对 Cursor 说 `/roundtable-setup` → 问答走完：选项目根 → 填 `models.json` + API key → `backend.sh apply` **逐家测速**（1-token ping + 延迟汇总，`≥2000ms` 标 `SLOW`，`≥5000ms` 标 `VERY SLOW`，失败立刻 fail-fast）→ 生成 `AGENTS.md` / `CLAUDE.md` → 拷 `.claude/settings.json` 拒绝列表。日常想随时复测：`backend.sh validate`。
 
 ## 为什么跨厂商 + 落盘
 
