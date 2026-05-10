@@ -134,7 +134,7 @@ STEP 2 — replace the \`_template\` entry under "models"
       "api_key":      "sk-...",
       "opus_model":   "claude-opus-4-7",
       "sonnet_model": "claude-sonnet-4-6",
-      "haiku_model":  "claude-haiku-4-5"
+      "haiku_model":  "claude-haiku-4-5-20251001"
     }
   }
 

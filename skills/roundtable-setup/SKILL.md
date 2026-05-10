@@ -156,7 +156,7 @@ This produces a setup-time footgun: the user copies an example with `cli_arg: "o
 
 | `base_url` host | Disallowed `cli_arg` (will be rejected) | Use instead |
 |---|---|---|
-| `claude-api.org` | `opus`, `sonnet`, `haiku` | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5` (or whatever's in the [channel doc](https://doc.claude-api.org/channels)) |
+| `claude-api.org` | `opus`, `sonnet`, `haiku` (and any non-dated haiku) | `claude-opus-4-7`, `claude-sonnet-4-6`, **`claude-haiku-4-5-20251001`** (haiku MUST have the date suffix on this proxy; opus / sonnet currently don't — but **always** verify against the [channel doc](https://doc.claude-api.org/channels) before adding new models) |
 | `cialloapi.cn` | `gpt-5`, `gpt-4`, `o1`, `o3` (no version suffix) | `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, etc. |
 | `*.deepseek.com/anthropic` | `opus`, `sonnet`, `haiku` | the upstream id, e.g. `deepseek-v4-pro[1m]` |
 | `openrouter.ai/api/v1` | any short alias | the OpenRouter-namespaced id, e.g. `anthropic/claude-opus-4` |
