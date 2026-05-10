@@ -252,6 +252,24 @@ if _secrets_path.exists():
 # ── Header ────────────────────────────────────────────────────────────────
 suffix = "" if p.name == "models.json" else f"  (fallback: {p.name})"
 print(f"=== Actor import status{suffix} ===")
+
+# ── network_proxy state ───────────────────────────────────────────────────
+proxy = data.get("network_proxy") or {}
+def _redact(url: str) -> str:
+    # IP-only hosts (typical for private proxies) are info, not secret.
+    return url or "(unset)"
+if not proxy:
+    print(f"  proxy    ⚪ NOT CONFIGURED  (add `network_proxy` block to enable)")
+elif not proxy.get("enabled"):
+    print(f"  proxy    ⚪ DISABLED        (network_proxy.enabled=false — direct connection)")
+elif (proxy.get("http_proxy", "")).startswith("REPLACE_WITH"):
+    print(f"  proxy    ⚠  PLACEHOLDER     (replace REPLACE_WITH:* in network_proxy or set enabled=false)")
+else:
+    print(f"  proxy    ✅ ENABLED         http={_redact(proxy.get('http_proxy',''))}  "
+          f"https={_redact(proxy.get('https_proxy',''))}")
+    if proxy.get("speedup_observed"):
+        print(f"           {'':<17}{proxy['speedup_observed']}")
+print()
 def _is_placeholder(v):
     return isinstance(v, str) and v.startswith("REPLACE_WITH")
 
@@ -405,7 +423,7 @@ HINT
     mf="${SKILL_DIR}/models.json"
     [[ -r "$mf" ]] || { echo "ERROR: $mf not found. Run: $0 init" >&2; exit 2; }
     python3 - "$mf" "$0" "$only" "$smoke_flag" <<'PY'
-import json, sys, subprocess, pathlib, urllib.parse
+import json, os, sys, subprocess, pathlib, urllib.parse
 mf, script, only, smoke_flag = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 data = json.loads(pathlib.Path(mf).read_text())
 active = data.get("active") or {}
@@ -414,6 +432,25 @@ targets = [only] if only else ["codex", "claude"]
 applied = 0
 # Track {actor: (base_url, key, cli_arg, claude_extras_or_None)} for post-apply smoke test.
 smoked: list = []
+
+# === network_proxy: optional HTTP proxy for codex/claude actor dispatches ====
+# Set in os.environ so the smoke test (stdlib urllib) honors it; also written
+# to .{codex,claude}_env.local at the end of apply so turn scripts inherit it.
+# Cursor-subagent path bypasses this entirely (Cursor IDE manages its own
+# network — see network_proxy._doc in models.json).
+proxy = data.get("network_proxy") or {}
+proxy_enabled = bool(proxy.get("enabled")) and not (proxy.get("http_proxy", "")).startswith("REPLACE_WITH")
+if proxy_enabled:
+    for k in ("http_proxy", "https_proxy", "no_proxy"):
+        v = proxy.get(k, "")
+        if v:
+            os.environ[k] = v
+            os.environ[k.upper()] = v
+    print(f"NETWORK_PROXY enabled: {proxy.get('http_proxy', '?')} "
+          f"(applied to smoke test + written into env files)")
+else:
+    print("NETWORK_PROXY disabled — direct connection")
+# =============================================================================
 
 # === Static check: known proxy host × known CLI short alias = ERROR ==========
 # Why: proxies (claude-api.org / cialloapi / DeepSeek-shim / OpenRouter) do not
@@ -619,6 +656,25 @@ for actor in targets:
 if applied == 0:
     print("Nothing applied. Edit models.json: set `active.{codex,claude}` to a model id whose entry has an `endpoint` block with both base_url and api_key.", file=sys.stderr)
     sys.exit(2)
+
+# ── Append proxy export lines to each applied env file ──────────────────────
+# backend.sh codex/claude subcommands wrote the actor env block; we append
+# proxy here so a single `source .{actor}_env.local` activates both layers.
+if proxy_enabled:
+    skill_dir = pathlib.Path(mf).parent
+    for actor, *_ in smoked:
+        env_file = skill_dir / f".{actor}_env.local"
+        if env_file.exists():
+            lines = ["", "# network_proxy from models.json — applied by backend.sh"]
+            for k in ("http_proxy", "https_proxy", "no_proxy"):
+                v = proxy.get(k, "")
+                if v:
+                    lines.append(f'export {k}={v!r}')
+                    lines.append(f'export {k.upper()}={v!r}')
+            with env_file.open("a") as f:
+                f.write("\n".join(lines) + "\n")
+            print(f"  appended proxy exports to {env_file.name}")
+
 # ── C. SMOKE TEST: ping each freshly-applied endpoint ───────────────────────
 if smoke_flag == "skip":
     print("(smoke test skipped: --no-smoke-test)")
@@ -650,7 +706,7 @@ PY
 cli_arg, fail-fast on 4xx/5xx. Does NOT touch .codex_env.local / .claude_env.local
 — this is the dry-run path users invoke between edits to confirm a config
 without overwriting their last-known-good env files."""
-import json, sys, pathlib, urllib.parse, urllib.request, urllib.error
+import json, os, sys, pathlib, urllib.parse, urllib.request, urllib.error
 mf, only = sys.argv[1], sys.argv[2]
 data = json.loads(pathlib.Path(mf).read_text())
 active = data.get("active") or {}
@@ -658,6 +714,17 @@ models = data.get("models") or {}
 targets = [only] if only else ["codex", "claude"]
 SMOKE_TIMEOUT_S = 15
 SMOKE_UA = "curl/8.4.0 agent-roundtable-validator"
+# Honor network_proxy from registry (stdlib urllib auto-uses http_proxy/https_proxy).
+proxy = data.get("network_proxy") or {}
+if proxy.get("enabled") and not (proxy.get("http_proxy", "")).startswith("REPLACE_WITH"):
+    for k in ("http_proxy", "https_proxy", "no_proxy"):
+        v = proxy.get(k, "")
+        if v:
+            os.environ[k] = v
+            os.environ[k.upper()] = v
+    print(f"NETWORK_PROXY: {proxy.get('http_proxy', '?')} (validate via proxy)")
+else:
+    print("NETWORK_PROXY: disabled (validate direct)")
 def _smoke(actor, base, key, model):
     base = base.rstrip("/")
     if actor == "codex":
