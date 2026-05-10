@@ -32,7 +32,7 @@ Read the sub-skill that matches the user's intent **before** taking any action. 
    - **Other roles** → Claude `acceptEdits` + same `.claude/settings.json` deny list.
    
    `<project_cwd>/.claude/settings.json` is the single source of truth (Anthropic docs: `--add-dir` paths do NOT contribute settings; cwd-anchored). `roundtable-setup` copies `templates/.claude/settings.json` into the user's project root; the skill repo also ships a sibling `.claude/settings.json` for self-audits.
-6. **Model Awareness.** When proposing a model, the chat parent MUST read its entry in `models.json` (or use `route.sh` output) and explicitly state its pricing, benchmarks, and `best_for` notes in the Dispatch Confirmation. Do not guess; read the registry.
+6. **Model Awareness — mechanical.** The chat parent MUST invoke `python3 scripts/print_dispatch_block.py --model <id> --role <role> [--effort <e>] [--thread <slug>] [--project <path>]` and paste its stdout verbatim into the Dispatch Confirmation. The script reads `models.json` directly, delegates pricing/estimate to `route.py`, and explicitly excludes deprecated foot-gun keys (`_official_before_discount` / `_pretax_reference`). Do NOT compose the block by hand; the chat parent has misquoted pricing twice in this skill's history when allowed to "remember" the registry.
 
 ## Dispatch Confirmation
 
