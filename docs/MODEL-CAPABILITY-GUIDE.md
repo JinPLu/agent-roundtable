@@ -36,6 +36,69 @@ reviewer-aggregator alias" — and let the registry resolve to a concrete name.
 
 ---
 
+## Geography & vendor risk distribution
+
+The three actor families have overlapping but non-identical geo-accessibility
+profiles. Understanding this lets you build a topology that stays operational
+even when one access path is disrupted.
+
+| Actor family | Dispatch mechanism | CN (no VPN) | US/EU enterprise |
+|---|---|---|---|
+| `codex` | Codex CLI → cialloapi proxy (`cialloapi.cn/v1`) | ✓ stable | ✓ (proxy, re-check rate limits) |
+| `claude` | Claude CLI → DeepSeek Anthropic-compat (`api.deepseek.com/anthropic`) | ✓ stable | ✓ (verify data-residency policy) |
+| `cursor-subagent` | Cursor IDE billing (`cursor.com/cn/docs/models-and-pricing`) | ✓ CN subdomain stable | ✓ |
+
+**Key point for CN environments.** OpenAI's direct API (`api.openai.com`) is
+blocked by the Great Firewall; the `codex` actor routes through `cialloapi.cn`
+to remain accessible.  DeepSeek's API is CN-domestically hosted and accessible
+without a proxy.  Cursor billing uses a CN-specific subdomain.  As a result,
+all three roundtable actor families are reachable from within CN simultaneously
+— this is intentional, not accidental.
+
+### Failover opt-in
+
+By default, roundtable does **not** automatically switch to a fallback model
+when a turn fails (`failover_policy.enabled = false` in `models.json`).  To
+enable automatic failover on rate-limit, timeout, or stall:
+
+**Step 1** — Edit `models.json`:
+
+```json
+"failover_policy": {
+  "enabled": true,
+  …
+}
+```
+
+**Step 2** — Export the opt-in flag before dispatch:
+
+```bash
+export ROUNDTABLE_FAILOVER_OPT_IN=1
+bash scripts/codex_turn.sh <slug> --role executor -m gpt-5.5
+```
+
+When enabled, `_common.sh:dispatch_with_fallback` walks each model's
+`fallback_chain` on trigger events (`rate-limit`, `timeout-exceeded-budget`,
+`convergence-loop-stalled-2x`) and requires user consent before the first
+failover in any thread.  Each failover hop is logged to
+`<thread_dir>/THREAD_LEDGER.md`.
+
+**Cross-family failover.** The default `fallback_chain` entries in
+`models.json` stay within the same vendor family (e.g. `gpt-5.5 → gpt-5.4 →
+gpt-5.4-mini`).  For true cross-vendor geo-redundancy — e.g. if cialloapi is
+unreachable — extend the chain manually:
+
+```json
+"gpt-5.5": {
+  "fallback_chain": ["gpt-5.4", "claude-opus"]
+}
+```
+
+This causes `codex_turn.sh` to fall back to the `claude` actor (DeepSeek,
+CN-stable) when both OpenAI aliases are unavailable.
+
+---
+
 ## Writing effective prompts
 
 ### 1. Put ground truth in `GOAL.md`, not the addendum

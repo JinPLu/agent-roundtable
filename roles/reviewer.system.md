@@ -153,6 +153,16 @@ Mechanics:
 7. **Dissent**: preserve minority dissent that you did NOT promote to
    `blocking_issues` in the `dissenting_concerns` array — cite the source
    reviewer, the concern, and one sentence of rationale for not promoting it.
+
+> **8. Self-consistency signal (prose only — do not add to JSON):** When ALL N
+> parallel reviewers emit `accept` as their Hand-off and `blocking_issues` is
+> empty, record in the prose section after the JSON block:
+> `Consensus: <N> actors (<actor-families>) all accepted; self-consistency HIGH.`
+> When opinions diverge, record:
+> `Consensus: split — <actor> accepted, <actor> revised.`
+> This signal is prose only; do not add it to the JSON verdict block (schema is
+> strict).
+
 8. Output the standard five-part turn body with ONE merged `json` verdict block in
    the Verification section. The JSON must conform to `reviewer.schema.json`.
    Do not reproduce each reviewer's raw body in THREAD.md — that is already
