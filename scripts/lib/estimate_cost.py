@@ -88,6 +88,17 @@ def _default_registry() -> pathlib.Path:
 ROLE_TOKEN_BUDGETS: dict[str, dict[str, int]] = {
     "planner":             {"input": 50_000,  "output_chat": 4_000,  "output_thinking": 15_000},
     "executor":            {"input": 80_000,  "output_chat": 8_000,  "output_thinking": 25_000},
+    # executor-fast: mechanical edits, smaller context window read, smaller emit.
+    # Tuned for sweeps/scaffolding — if a turn needs >2k output it's drifting
+    # into regular executor budget. NOTE 2026-05-11: derived from gpt-5.5 low
+    # history p50=45s × 34 tok/s ~= 1500 tokens emit, rounded up.
+    "executor-fast":       {"input": 40_000,  "output_chat": 2_000,  "output_thinking": 5_000},
+    # researcher: reads many docs (high input), produces options table (medium
+    # output). Reasoning fills the thinking output.
+    "researcher":          {"input": 100_000, "output_chat": 6_000,  "output_thinking": 18_000},
+    # researcher-deep: same input scale but heavier synthesis; output similar
+    # to executor-heavy but with no tool emission.
+    "researcher-deep":     {"input": 100_000, "output_chat": 8_000,  "output_thinking": 25_000},
     "reviewer":            {"input": 60_000,  "output_chat": 3_000,  "output_thinking": 12_000},
     "devils-advocate":     {"input": 60_000,  "output_chat": 3_000,  "output_thinking": 12_000},
     "reviewer-aggregator": {"input": 30_000,  "output_chat": 2_000,  "output_thinking": 8_000},
@@ -241,6 +252,30 @@ def _resolve_pricing(model: dict, source: str) -> tuple[float, float, list[str]]
     return snap_in, snap_out, notes
 
 
+def _model_speed_tps(model: dict) -> tuple[float | None, str]:
+    """Return (tokens_per_sec_median, source_label) or (None, 'unmeasured').
+
+    Speed lives in `endpoint.speed.tokens_per_sec_median` for codex/claude
+    (proxy speed; measured via scripts/lib/speed_test.py) and in top-level
+    `speed.tokens_per_sec_median` for cursor-subagent (typically None — see
+    note in registry).
+    """
+    ep_sp = (model.get("endpoint") or {}).get("speed") or {}
+    if ep_sp.get("tokens_per_sec_median") is not None:
+        return float(ep_sp["tokens_per_sec_median"]), "endpoint.speed"
+    top_sp = model.get("speed") or {}
+    if top_sp.get("tokens_per_sec_median") is not None:
+        return float(top_sp["tokens_per_sec_median"]), "speed"
+    return None, "unmeasured"
+
+
+# Per-turn dispatch overhead (tool-loop control flow, parent orchestration,
+# network round-trips before/after model emit). Derived from history aggregate
+# 2026-05-11: smallest observed turns (effort=low, 1-2 tool calls) ~45s with
+# ~200 emit tokens at ~34 tok/s → ~6s of emit + ~30s overhead + tool latency.
+WALL_CLOCK_OVERHEAD_S = 30.0
+
+
 def estimate(
     alias: str,
     role: str,
@@ -350,6 +385,48 @@ def estimate(
         "quarterly against history/<role>/<ts>/ p50."
     )
 
+    # ── Wall-clock estimate ─────────────────────────────────────────────────
+    # Why: a "simple executor" turn dispatched against the slowest viable model
+    # can take an hour. Cost band alone doesn't catch this — a $0.20 turn that
+    # runs 3000s is still a UX disaster. Compute it from output_per_turn /
+    # measured tokens/sec + dispatch overhead.
+    #
+    # output_per_turn already accounts for thinking via the EFFORT_MULTIPLIERS
+    # output factor (high=1.8, xhigh=3.0), so we don't apply another effort
+    # scale here. The measured tps is chat-mode (no explicit thinking flag) but
+    # since GPT-5 series emits reasoning tokens by default during the same test,
+    # the measured rate already reflects "real emit speed under thinking".
+    tps_value, tps_source = _model_speed_tps(model)
+    if tps_value is not None and tps_value > 0:
+        point_s_per_turn = output_per_turn / tps_value + WALL_CLOCK_OVERHEAD_S
+        wall_clock_s = {
+            "point_per_turn": round(point_s_per_turn, 1),
+            "low_per_turn": round(point_s_per_turn * LOW_BAND, 1),
+            "high_per_turn": round(point_s_per_turn * HIGH_BAND, 1),
+            "point_total": round(point_s_per_turn * turns, 1),
+            "low_total": round(point_s_per_turn * turns * LOW_BAND, 1),
+            "high_total": round(point_s_per_turn * turns * HIGH_BAND, 1),
+            "tps_used": tps_value,
+            "tps_source": tps_source,
+            "overhead_s_per_turn": WALL_CLOCK_OVERHEAD_S,
+            "note": ("Ceiling estimate — assumes the dispatch fills the role's "
+                     "output token budget. Actual turns may stop earlier if the "
+                     "model emits acceptance criteria sooner. Cross-check vs "
+                     "history/<role>/ p50 if available."),
+        }
+        # Surface the ceiling prominently in notes when it's ugly.
+        if point_s_per_turn >= 600:
+            notes.insert(0, f"⚠ wall-clock CEILING ~{int(point_s_per_turn)}s per turn "
+                            f"({tps_value:.0f} tok/s × {output_per_turn:,} output tokens). "
+                            f"Pick a faster model or lower effort if this exceeds budget.")
+    else:
+        wall_clock_s = None
+        notes.append(
+            "Wall-clock estimate UNAVAILABLE — speed unmeasured for this model. "
+            "Run scripts/lib/speed_test.py to populate endpoint.speed (codex/claude) "
+            "or dispatch a measurement Task subagent (cursor-subagent)."
+        )
+
     return {
         "model_alias": alias,
         "cli_arg": model.get("cli_arg"),
@@ -379,6 +456,7 @@ def estimate(
         "teams": bool(teams),
         "registry": registry_path.name,
         "pricing_source": source,
+        "wall_clock_s": wall_clock_s,
         "notes": notes,
     }
 
@@ -427,6 +505,15 @@ def format_text(result: dict) -> str:
             f"    of which reasoning:  ~{_fmt_tokens(result['reasoning_tokens'])} "
             f"tokens (≈{share_pct}%)"
         )
+    wc = result.get("wall_clock_s")
+    if wc:
+        per = "per turn" if turns == 1 else f"for {turns} turns"
+        lines.append(
+            f"Wall-clock ceiling: ~{wc['low_total']:.0f}–{wc['high_total']:.0f}s {per}  "
+            f"(point: ~{wc['point_total']:.0f}s @ {wc['tps_used']:.0f} tok/s)"
+        )
+    elif "wall_clock_s" in result:
+        lines.append("Wall-clock ceiling: UNAVAILABLE (speed unmeasured for this model)")
     if result["teams"] and result["teams_extra_usd"] > 0:
         lines.append(
             f"  Teams Token Rate:                          "
@@ -479,9 +566,15 @@ def format_route_line(result: dict) -> str:
         # reasoning_tokens is summed over turns; show per-turn for the route line
         per_turn_reasoning = result["reasoning_tokens"] // max(1, result["turns"])
         extra = f" incl. ~{_fmt_short(per_turn_reasoning)} reasoning"
+    wc = result.get("wall_clock_s")
+    if wc:
+        wc_part = (f"  ~{wc['low_per_turn']:.0f}–{wc['high_per_turn']:.0f}s "
+                   f"@ {wc['tps_used']:.0f}tok/s")
+    else:
+        wc_part = "  ~?s (speed unmeasured)"
     return (
         f"   est: ${band['low']:.2f}–${band['high']:.2f}/turn  "
-        f"(input p50: {inp}, output p50: {out}{extra})"
+        f"(input p50: {inp}, output p50: {out}{extra}){wc_part}"
     )
 
 
