@@ -92,6 +92,21 @@ ensure_artifacts_root() {
 iso_now() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 ts_compact() { date -u +"%Y%m%dT%H%M%SZ"; }
 
+# ── Gate 3.2: check_dispatch_confirmed ──────────────────────────────────────
+# Enforce that the operator acknowledged the dispatch block before firing.
+# Call after argument parsing in each turn script.
+# Bypass: export ROUNDTABLE_DISPATCH_CONFIRMED=1 or pass --force (sets ROUNDTABLE_FORCE=1).
+check_dispatch_confirmed() {
+  if [[ "${ROUNDTABLE_DISPATCH_CONFIRMED:-0}" != "1" ]] && [[ "${ROUNDTABLE_FORCE:-0}" != "1" ]]; then
+    echo "ERROR: Dispatch confirmation not acknowledged." >&2
+    echo "  1. Generate the block: python3 scripts/print_dispatch_block.py --model <m> --role <r>" >&2
+    echo "  2. Show it to the user and get approval." >&2
+    echo "  3. Export ROUNDTABLE_DISPATCH_CONFIRMED=1 before calling this script." >&2
+    echo "  Or pass --force to bypass (CI/scripted use only)." >&2
+    exit 1
+  fi
+}
+
 warn_addendum_sanity() {
   local addendum_file="$1" source_label="${2:-roundtable}"
   [[ -s "$addendum_file" ]] || return 0
@@ -555,4 +570,66 @@ except json.JSONDecodeError as e:
 pathlib.Path(dest).write_text(json.dumps(parsed, indent=2))
 print(f"verdict.json written: {dest}", file=sys.stderr)
 PY
+  # Gate 3.4: validate verdict schema if file was written
+  local verdict_file="$dest"
+  if [[ -f "$verdict_file" ]]; then
+    python3 "$SKILL_DIR/scripts/lib/validate_verdict.py" "$verdict_file" >&2 || {
+      mv "$verdict_file" "${verdict_file%.json}.invalid.json"
+      echo "WARN: verdict failed schema validation — saved as $(basename "${verdict_file%.json}.invalid.json")" >&2
+    }
+  fi
+}
+
+# ── patch_blind_meta ─────────────────────────────────────────────────────────
+# Stamp blind=true + skip_sections into a turn's meta.json when --blind is set.
+# Args: meta_file  blind ("1" to patch, anything else is a no-op)
+patch_blind_meta() {
+  local meta_file="$1" blind="$2"
+  [[ "$blind" != "1" ]] && return 0
+  python3 - "$meta_file" <<'PY'
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+m = json.loads(p.read_text())
+m['blind'] = True
+m.setdefault('skip_sections', []).append('latest_verdict')
+p.write_text(json.dumps(m, indent=2))
+PY
+}
+
+# ── Gate 3.5: append_budget_ledger ───────────────────────────────────────────
+# Append a JSONL cost record to <thread_dir>/.budget_ledger.jsonl after each turn.
+# Args: thread_dir role model est_usd (may be empty/null)
+append_budget_ledger() {
+  local thread_dir="$1" role="$2" model="$3" est_usd="${4:-null}"
+  local ledger="${thread_dir}/.budget_ledger.jsonl"
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  printf '{"ts":"%s","role":"%s","model":"%s","est_usd":%s}\n' \
+      "$ts" "$role" "$model" "$est_usd" >> "$ledger"
+}
+
+# ── finalize_turn ────────────────────────────────────────────────────────────
+# Emit usage log, stdout KV lines, and the ROUNDTABLE_DONE signal at the end
+# of every turn script.
+# Args: thread_dir hist actor role exit_code turn_n duration_s slug model effort source_file [est_usd]
+finalize_turn() {
+  local thread_dir="$1" hist="$2" actor="$3" role="$4" turn_exit="$5"
+  local turn_n="${6:-}" dur="${7:-0}" slug="$8" model="${9:-default}"
+  local effort="${10:-medium}" source_file="${11:-}" est_usd="${12:-null}"
+  python3 "${SKILL_DIR}/scripts/lib/log_turn_usage.py" \
+    --actor "$actor" \
+    --thread "$slug" \
+    --model "$model" \
+    --role "$role" \
+    --effort "$effort" \
+    --exit-code "$turn_exit" \
+    --elapsed-s "$dur" \
+    --source-file "$source_file" \
+    >/dev/null 2>>"${hist}/stderr.log" || \
+    echo "WARN [${actor}_turn.sh]: usage log append failed (non-fatal)" >&2
+  append_budget_ledger "$thread_dir" "$role" "$model" "$est_usd"
+  echo "history=${hist}"
+  echo "exit_code=${turn_exit}"
+  echo "duration_s=${dur}"
+  emit_done "$thread_dir" "$hist" "$actor" "$role" "$turn_exit" "$turn_n" "$dur"
 }
