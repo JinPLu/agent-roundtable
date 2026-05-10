@@ -102,6 +102,48 @@ Every turn script emits **two completion signals**:
 1. **Cursor `Task` latency is unbounded.** Pool throttling can queue 10+ min. Prefer CLI when wallclock matters.
 2. **Addendum/body files must be under workspace root**, not `/tmp/` (Cursor's subprocess `/tmp` is isolated).
 
+## N parallel executors (race) — opt-in
+
+The default `roundtable-execute` skill is **single executor**. Use this pattern only when multiple candidate implementations are worth the cost (extra branches, aggregator turn, forensic loser branches).
+
+### When it helps
+
+- Multiple high-quality candidate implementations are genuinely valuable: risky changes where seeing different shapes informs the merge decision.
+- Speed-via-racing: N× tokens to compress wallclock.
+- Prior single-executor attempts produced a working-but-ugly answer and alternative shapes are worth comparing.
+
+### Process sketch
+
+1. **Confirm dispatch** — show Dispatch Confirmation; sum per-actor estimates across N executors.
+2. **Isolate worktrees** — each executor gets its own branch via `git worktree`. Same `--task` and `GOAL.md`; executors do not read each other’s trees.
+
+```bash
+slug=<thread-slug>
+git -C $ROUNDTABLE_PROJECT_ROOT worktree add ../$slug-codex   -b $slug/codex
+git -C $ROUNDTABLE_PROJECT_ROOT worktree add ../$slug-claude  -b $slug/claude
+
+ROUNDTABLE_PROJECT_ROOT=../$slug-codex   $SKILL/scripts/codex_turn.sh  $slug --role executor --task "<same one-liner>"
+ROUNDTABLE_PROJECT_ROOT=../$slug-claude  $SKILL/scripts/claude_turn.sh $slug --role executor --task "<same one-liner>"
+```
+
+Run concurrent Shell/Task dispatches (see [Parallel dispatch](#parallel-dispatch) above). All N must finish before aggregation.
+
+3. **Aggregator picks one winner** — use `roundtable-review`’s aggregator contract; instruct **select**, not Frankenstein merge:
+
+```bash
+$SKILL/scripts/claude_turn.sh $slug --role reviewer-aggregator \
+  --task "Compare candidate branches: $slug/codex, $slug/claude (…). Select the SINGLE best candidate. Justify by evidence_delta against GOAL.md. Do NOT propose a merged chimera; pick one branch as-is."
+```
+
+4. **Hand off** — surface the winning branch, verdict path, and loser SHAs; keep loser branches as record.
+
+### Red flags
+
+- Same actor family for all parallel executors — fails independence premise; diversify vendors.
+- Aggregator synthesizes a merge instead of picking one branch — re-dispatch with stricter framing.
+
+---
+
 ## Evidence — when multi-agent helps
 
 - Cross-vendor review outperforms same-vendor: same-actor parallel reviewers exhibit ≥85% sycophantic modal adoption ([Cost of Consensus, 2025](https://arxiv.org/html/2605.00914v1)). Heterogeneous reviewers preserve disagreement ([Preserving Disagreement, 2025](https://arxiv.org/html/2604.26561)).
