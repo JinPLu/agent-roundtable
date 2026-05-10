@@ -377,6 +377,7 @@ m = models.get(alias, {})
 cli_arg = m.get("cli_arg", alias)
 print(f"model={cli_arg}")
 print(f"effort={effort}")
+print(f"ROUNDTABLE_MODEL_ALIAS={alias}")
 PY
 }
 
