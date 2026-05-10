@@ -150,6 +150,20 @@ case "$role" in
     _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
 esac
 
+# Reviewer-likes: ask claude to vendor-validate the verdict against the JSON
+# schema (--json-schema takes the schema content, not a file path).
+# extract_json_verdict still runs as a regex fallback for defence in depth.
+case "$role" in
+  reviewer|reviewer-aggregator|devils-advocate)
+    _schema="${SKILL_DIR}/roles/reviewer.schema.json"
+    if [[ -f "$_schema" ]] && python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$_schema" >/dev/null 2>&1; then
+      _args+=( --json-schema "$(cat "$_schema")" )
+    else
+      echo "WARN [claude_turn.sh]: reviewer.schema.json missing or invalid JSON; skipping --json-schema." >&2
+    fi
+    ;;
+esac
+
 _start=$(date +%s)
 set +e
 if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then

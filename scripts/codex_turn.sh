@@ -148,6 +148,21 @@ _args=(
 )
 [[ -n "$model" ]] && _args+=( -m "$model" )
 
+# Reviewer-likes: ask codex to vendor-validate the verdict against the
+# JSON schema. extract_json_verdict still runs as a regex fallback for
+# defence in depth. Schema file is validated lazily — silently skip if
+# missing or unparseable rather than blocking the turn.
+case "$role" in
+  reviewer|reviewer-aggregator|devils-advocate)
+    _schema="${SKILL_DIR}/roles/reviewer.schema.json"
+    if [[ -f "$_schema" ]] && python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$_schema" >/dev/null 2>&1; then
+      _args+=( --output-schema "$_schema" )
+    else
+      echo "WARN [codex_turn.sh]: reviewer.schema.json missing or invalid JSON; skipping --output-schema." >&2
+    fi
+    ;;
+esac
+
 _start=$(date +%s)
 set +e
 if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
