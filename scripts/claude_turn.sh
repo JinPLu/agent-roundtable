@@ -153,7 +153,8 @@ if [[ -n "$_max_turns" ]]; then
   if claude --help 2>/dev/null | grep -q -- '--max-turns'; then
     _args+=( --max-turns "$_max_turns" )
   else
-    echo "WARN [claude_turn.sh]: claude --max-turns not supported by installed CLI (need v2.x with this flag); skipping turn-count firewall." >&2
+    _claude_ver="$(claude --version 2>/dev/null | head -1)"
+    echo "WARN [claude_turn.sh]: installed claude CLI does not expose --max-turns (${_claude_ver:-unknown version}); skipping turn-count firewall. --max-budget-usd still applies." >&2
   fi
 fi
 if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" && "$ROUNDTABLE_PROJECT_ROOT" != "$thread_dir" ]]; then
