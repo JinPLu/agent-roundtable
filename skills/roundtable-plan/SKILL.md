@@ -14,14 +14,28 @@ Planning is split into **Phase A** (research / divergence → `artifacts/options
 
 ## Stop-after Phase A (discuss-equivalent)
 
-Orchestration uses an environment variable so headless scripts and Cursor parents share one convention:
+**Only when the user's request does not already indicate scope**, ask:
+
+```
+AskQuestion(
+  prompt="Plan 走到哪一步？",
+  options=[
+    {id: "phase-a", label: "只跑 Phase A — 看完 options.md 后我再决定"},
+    {id: "both",    label: "一路跑到 PLAN.md"},
+  ],
+)
+```
+
+**Skip this question** when the user has already signalled intent — e.g. "出几个方案让我选" / "列 options" → `phase-a`; "出 PLAN" / "做计划" / "实现 X" → `both`. Set `ROUNDTABLE_STOP_AFTER_PLAN_PHASE=phase-a` accordingly.
+
+The environment variable is the headless / scripted convention; the AskQuestion (when needed) is just its Cursor-interactive source of truth.
 
 | Variable | Effect |
 |----------|--------|
 | `ROUNDTABLE_STOP_AFTER_PLAN_PHASE=phase-a` | After Phase A completes (merged `artifacts/options.md`), **do not** dispatch Phase B until the user explicitly continues. The parent surfaces `options.md` and waits for approval to proceed to aggregation. |
 | unset or empty | Run Phase A then Phase B in one orchestrated flow (subject to user Dispatch Confirmation at phase boundaries). |
 
-There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **parent agent** reads `ROUNDTABLE_STOP_AFTER_PLAN_PHASE` and gates Phase B. Document the variable in the Dispatch Confirmation when you intend to pause after options.
+There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **parent agent** reads `ROUNDTABLE_STOP_AFTER_PLAN_PHASE` and gates Phase B.
 
 **User checkpoint (recommended after Phase A):** Present `artifacts/options.md`, confirm which option(s) to carry forward, then run Phase B with a tight `--task` for the aggregator.
 
@@ -32,7 +46,7 @@ There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **paren
 **Goal:** N parallel planners or discussant-framed turns from **different actor families** produce partial option artifacts; one synthesis turn merges them into **`artifacts/options.md`** — a cross-vendor option matrix with explicit trade-offs. Phase A is **not** required to pick a single winner; the user may still choose after reading the matrix.
 
 1. **Create thread**: `new_thread.sh <slug> "<goal>"` (optional `QUESTION.md` for purely exploratory questions).
-2. **Confirm dispatch**: Show the root [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation). `Multi?` should list N parallel planners (e.g. codex + claude + cursor-subagent). Use `route.sh --role planner --diversity` for cross-vendor pairs.
+2. **Confirm dispatch**: Show the root [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation). `Multi?` should list N parallel planners from **different actor families** (e.g. codex + claude + cursor-subagent) per Hard Rule #4. Pick actors manually from `backend.sh show`; there is no automated `--diversity` flag.
 3. **Fan-out**: Dispatch N `planner` (or `discussant`) turns in parallel with tasks that require option matrices / plans written under `artifacts/` **without** mandating a final unified `PLAN.md` yet. All three planner backends are now write-protected and the per-vendor plan body is captured into `artifacts/plan-<actor>-<ts>.md` by the dispatcher, so a single glob `artifacts/plan-*-<ts>.md` collects every fan-out for the synthesis step:
    - **Claude**: `claude_turn.sh` uses `--permission-mode plan`; capture writes `artifacts/plan-claude-<ts>.md`.
    - **Codex**: `codex_turn.sh` uses `--sandbox read-only` for planner role (P1.1); capture writes `artifacts/plan-codex-<ts>.md`.

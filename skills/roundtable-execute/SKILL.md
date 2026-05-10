@@ -30,7 +30,7 @@ disable-model-invocation: true
 
 ### Phase 0: confirm dispatch
 
-Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the root `SKILL.md` *(Hard Rule #7 — generate via `print_dispatch_block.py`)*. `Multi?` is **single executor** unless you explicitly opt into the advanced race pattern.
+Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the root `SKILL.md` *(Hard Rule #2 — generate via `print_dispatch_block.py`)*. `Multi?` is **single executor** unless you explicitly opt into the advanced race pattern.
 
 ### Phase 1: implement
 
@@ -49,20 +49,31 @@ $SKILL/scripts/claude_turn.sh <slug> --role executor --task "…"
 
 ### Phase 2: scope check (orchestrator / parent — required)
 
-The executor turn itself does not prove scope compliance. After the turn finishes, the **parent agent** must:
+After the executor turn finishes, run:
 
-1. Fix a **comparison base** — e.g. the commit at thread start, or the SHA recorded when the plan was accepted (`<plan-base-sha>`). Document which base you use in the thread or `OPEN_QUESTIONS.md` if ambiguous.
-2. List touched paths:
+```bash
+python3 $SKILL/scripts/lib/scope_check.py --thread <slug>
+```
 
-   `git -C <ROUNDTABLE_PROJECT_ROOT> diff --name-only <plan-base-sha>..HEAD`
+Pass `--base <sha>` if you want to diff from a specific commit other than the auto-detected merge-base. The script reads `GOAL.md`'s **In-scope paths** and **Out-of-scope** sections and compares them against `git diff --name-only`.
 
-3. Parse **In-scope paths** from `GOAL.md` (prefixes or glob patterns as written there). Any changed path that does **not** fall under an in-scope rule is a **scope violation candidate** (also cross-check **Out-of-scope**).
+- Exit 0 (`PASS`) → state that the scope check passed and proceed.
+- Exit 1 (`VIOLATION`) → do **not** silently accept the work. Call:
 
-4. **Surface** the result to the user explicitly:
-   - If all paths are in scope → state that the scope check passed.
-   - If any path is out of scope → list those paths, link to `GOAL.md` sections, and **do not** silently accept the work; follow `roundtable-goal` / user direction to revert or re-scope.
+  ```
+  AskQuestion(
+    prompt="Scope 违规，怎么办？",
+    options=[
+      {id: "revert",              label: "Revert out-of-scope 文件，re-run executor"},
+      {id: "accept-update-goal",  label: "接受变更，更新 GOAL.md In-scope 范围"},
+      {id: "re-plan",             label: "回到 roundtable-plan 重新规划"},
+    ],
+  )
+  ```
 
-This check is the **single-execute** equivalent of the scope signal used inside the goal loop; it is **not** an automatic git revert (the parent/user decides).
+- Exit 2 (`NO_GOAL`) → GOAL.md is missing or its In-scope section is empty; fill it before re-running.
+
+This check is **not** an automatic git revert — the parent/user decides the action via the AskQuestion above.
 
 ## Red flags / stop when
 

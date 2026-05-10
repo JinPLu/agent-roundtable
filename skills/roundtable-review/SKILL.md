@@ -44,7 +44,7 @@ Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) block fro
 
 Identify the file(s), commit range, or PR the user wants reviewed. Update `GOAL.md` in the thread with the acceptance criteria — reviewers grade against `GOAL.md`, not against your chat-parent intuition.
 
-### 3. Dispatch parallel reviewers (different actor families, both `--blind`) *(Hard Rule #5)*
+### 3. Dispatch parallel reviewers (different actor families, both `--blind`) *(Hard Rule #4)*
 
 ```
 $SKILL/scripts/codex_turn.sh  <slug> --role reviewer        --blind --task "Review <target>"

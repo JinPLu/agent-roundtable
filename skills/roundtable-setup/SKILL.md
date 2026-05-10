@@ -41,7 +41,7 @@ AskQuestion(
 )
 ```
 
-If `__custom__`, follow up with a free-form Shell prompt or a second `AskQuestion`. Validate before moving on:
+If `__custom__`, follow up with a second `AskQuestion` that lists up to 5 recently seen git toplevels (obtained via `git rev-parse --show-toplevel` and any IDE workspace roots) plus a final `{id: "__type-it__", label: "其他 — 我来输入路径"}` option. If the user selects `__type-it__`, prompt for a free-form path in a follow-up message. Do NOT open a shell prompt for path collection. Validate before moving on:
 
 ```bash
 export ROUNDTABLE_PROJECT_ROOT=<chosen path>
@@ -61,7 +61,23 @@ Run:
 bash $SKILL/scripts/backend.sh init
 ```
 
-This writes `$SKILL/models.json` (chmod 600, gitignored) and prints a walkthrough explaining the four user-fillable fields per model: `actor`, `cli_arg`, `endpoint.base_url`, `endpoint.api_key`. Tell the user to open the file, replace the `_template` entry with their real model(s), and reply when done.
+This writes `$SKILL/models.json` (chmod 600, gitignored) and prints a walkthrough explaining the four user-fillable fields per model: `actor`, `cli_arg`, `endpoint.base_url`, `endpoint.api_key`. Tell the user to open the file and replace the `_template` entry with their real model(s). Then call:
+
+```
+AskQuestion(
+  prompt="models.json 编辑完成了吗？",
+  options=[
+    {id: "applied",       label: "已保存，继续"},
+    {id: "still-editing", label: "还在编辑，稍等"},
+    {id: "need-template", label: "帮我填一个示例 actor"},
+    {id: "cancel",        label: "取消 setup"},
+  ],
+)
+```
+
+- `still-editing` → wait and re-show the same `AskQuestion`.
+- `need-template` → paste a minimal example actor block from `models.example.json`, then re-show the `AskQuestion`.
+- `cancel` → abort setup.
 
 ### 2. Apply
 
@@ -78,7 +94,20 @@ If `apply` rejects a combination at step (a), the error message points at the ex
 
 ### 3. Generate project context (only if missing)
 
-If `$ROUNDTABLE_PROJECT_ROOT/AGENTS.md` does not exist, offer to generate it. If the user accepts:
+If `$ROUNDTABLE_PROJECT_ROOT/AGENTS.md` does not exist, call:
+
+```
+AskQuestion(
+  prompt="项目根没有 AGENTS.md，要生成吗？",
+  options=[
+    {id: "generate",        label: "生成 AGENTS.md + CLAUDE.md"},
+    {id: "skip",            label: "跳过 (后续 turn 不带项目上下文)"},
+    {id: "let-me-look",     label: "先让我看看现有文件"},
+  ],
+)
+```
+
+If the user selects `generate`:
 
 - Read `README.md`, top-level dirs, any `.planning/` index files.
 - Write `AGENTS.md` at the project root with cross-platform rules: build commands, directory map, PR rules, code style, do-not-touch paths.
@@ -95,7 +124,20 @@ Explain that subsequent dispatches will boot with full project awareness.
 
 ### 4. Seed `.claude/settings.json` (only if missing)
 
-If `$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json` does not exist, copy the template:
+If `$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json` does not exist, call:
+
+```
+AskQuestion(
+  prompt=".claude/settings.json 不存在，怎么处理？",
+  options=[
+    {id: "copy-template", label: "从模板复制 (推荐：包含拒绝破坏性 git 和 secrets 读取规则)"},
+    {id: "skip",          label: "跳过"},
+    {id: "diff-existing", label: "对比现有文件，只推荐缺失规则"},
+  ],
+)
+```
+
+If the user selects `copy-template`, copy the template:
 
 ```bash
 mkdir -p "$ROUNDTABLE_PROJECT_ROOT/.claude"
@@ -104,7 +146,7 @@ cp "$SKILL/templates/.claude/settings.json" "$ROUNDTABLE_PROJECT_ROOT/.claude/se
 
 The template denies destructive git operations (`git push`, `git reset --hard`, `git rebase`, `git filter-branch`, `git update-ref`) and reads of common secrets (`.env*`, `~/.aws/**`, `~/.ssh/**`, `credentials*`, `*secret*`, `*.pem`). With this file present, `claude_turn.sh` skips its inline `--disallowedTools` fallback in favour of project-level settings — same coverage, source-controllable, user-overridable.
 
-If the user already has a `.claude/settings.json`, **do not overwrite**. Diff the deny list and recommend additions if any of the above are missing.
+If the user selects `diff-existing` (settings file already present), read the existing file and recommend additions for any of the above deny rules that are missing; **do not overwrite**.
 
 ## Provider quirks (read before filling `cli_arg`)
 
@@ -120,6 +162,16 @@ This produces a setup-time footgun: the user copies an example with `cli_arg: "o
 | `openrouter.ai/api/v1` | any short alias | the OpenRouter-namespaced id, e.g. `anthropic/claude-opus-4` |
 
 If you're using a proxy not on this list, **always** consult the proxy's accepted-model doc and use the exact id. The smoke test (step 2c above) catches everything else.
+
+### 5. Warm up the research cache (only if a thread exists)
+
+After `backend.sh apply` succeeds, if a thread directory already exists (i.e. the user is re-running setup against an ongoing thread), pre-warm the research cache so the first dispatch does not trigger a redundant freshness check:
+
+```bash
+python3 $SKILL/scripts/lib/research_cache.py --thread <slug>
+```
+
+If no thread exists yet this step is skipped — the cache will be written on the first `roundtable-plan` / `roundtable-execute` dispatch.
 
 ## Stop when
 

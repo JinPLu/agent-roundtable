@@ -54,63 +54,51 @@ The following are **orchestrator duties** — not delegated to plan/execute/revi
 
 Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) once at the start. Set **Budget** if desired (default: 3 rounds, no clock cap). Subsequent phases inside one accepted run do not need re-confirmation unless scope changes catastrophically.
 
-### Phase 1: plan (`roundtable-plan`)
+### Phase 1: plan
 
-Follow **`skills/roundtable-plan/SKILL.md`**:
+Delegate to **`skills/roundtable-plan/SKILL.md`** (cross-vendor fan-out → `artifacts/PLAN.md`). Goal-loop constraint: if `GOAL.md` acceptance criteria are still at template defaults, sharpen them and re-invoke plan before proceeding to Phase 2.
 
-- Fan-out N parallel **planner** turns (cross-vendor), then Phase B aggregation to **`artifacts/PLAN.md`**.
-- For short exploratory loops you may set `ROUNDTABLE_STOP_AFTER_PLAN_PHASE=phase-a` and pause at **`artifacts/options.md`** before continuing to Phase B — document that in the thread when used.
+### Phase 2: execute
 
-Example entrypoints (pick actors per `route.sh`):
+Delegate to **`skills/roundtable-execute/SKILL.md`** (single executor, main worktree). Goal-loop constraint: run `python3 $SKILL/scripts/lib/scope_check.py --thread <slug>` after the turn; on `VIOLATION`, do **not** advance to Phase 3 — use `AskQuestion` (see Phase 5) to decide revert / re-scope, then retry Phase 2.
 
-```bash
-$SKILL/scripts/codex_turn.sh  <slug> --role planner --task "<goal one-liner>"
-$SKILL/scripts/claude_turn.sh <slug> --role planner --task "…"
-```
+### Phase 3: parallel blind review
 
-Wait until `PLAN.md` (and `GOAL.md` acceptance criteria) align with user intent. If `GOAL.md` is still the template, sharpen inputs and re-invoke plan.
-
-### Phase 2: execute (`roundtable-execute`)
-
-Follow **`skills/roundtable-execute/SKILL.md`** — **single executor** in the main worktree:
-
-```bash
-$SKILL/scripts/codex_turn.sh  <slug> --role executor --task "<derived from aggregator or PLAN.md>"
-# or claude_turn.sh
-```
-
-After the turn completes, run the **scope check** prescribed there (`git diff --name-only` vs `GOAL.md` **In-scope paths**). Surface violations before treating the round as successful.
-
-### Phase 3: parallel blind review (`roundtable-review`)
-
-Follow **`skills/roundtable-review/SKILL.md`** — cross-vendor, **`--blind`**:
-
-```bash
-$SKILL/scripts/codex_turn.sh  <slug> --role reviewer        --blind
-$SKILL/scripts/claude_turn.sh <slug> --role devils-advocate --blind
-```
-
-Both must finish before Phase 4.
+Delegate to **`skills/roundtable-review/SKILL.md`** (cross-vendor, `--blind`). Both reviewers must finish before Phase 4.
 
 ### Phase 4: aggregate
 
-```bash
-$SKILL/scripts/claude_turn.sh <slug> --role reviewer-aggregator \
-  --task "Round N convergence verdict; emit convergence_status."
-```
+Delegate to the `reviewer-aggregator` role per **`skills/roundtable-review/SKILL.md`**. Aggregator output lands in `verdict.json`; proceed to Phase 5.
 
 ### Phase 5: evaluate stop condition
 
-Before starting a new round, run `python3 scripts/lib/check_budget.py <thread_dir>` to verify the budget cap has not been reached *(Hard Rule #8)*.
+Before starting a new round, run `python3 scripts/lib/check_budget.py <thread_dir>` to verify the budget cap has not been reached *(Hard Rule #5)*.
 
 Read **`verdict.json`**:
 
 - **Stop and report success** if `blocking_issues` has 0 BLOCKERs **and** acceptance shows ≤1 PARTIAL/MISSING/VERIFICATION-NOT-EVIDENCED **and** `convergence_status` is `converged` or `progressing → accept-and-stop`.
-- **Fast-fail (anti-stall)** if `evidence_delta_vs_prior_round == "none"` AND blocking issues are unchanged from the previous round — do **not** dispatch another executor; surface stall.
-- **Scope-violation revise** if `scope_violation.detected == true` — loop to Phase 2 with `--task` to revert paths in `scope_violation.paths` before further feature work.
 - **Loop to Phase 2** otherwise — pass `next_action_hint` into the executor `--task`.
-- **Budget hit** — escalate with latest verdict; do not start another round.
-- **Escalate** if `convergence_status` is `stalled` two rounds running, or `regressed`.
+
+For all non-obvious branch points (stall, scope violation, budget hit, regression), use `AskQuestion` before acting:
+
+```
+AskQuestion(
+  prompt="Loop status: <convergence_status> — 下一步？",
+  options=[
+    {id: "continue",     label: "继续下一轮 (pass next_action_hint)"},
+    {id: "stop-accept",  label: "接受当前状态，终止循环"},
+    {id: "re-plan",      label: "回到 Phase 1 重新规划"},
+    {id: "escalate",     label: "Escalate 给我看，我来决定"},
+  ],
+)
+```
+
+Specific triggers for the AskQuestion:
+
+- **Fast-fail (anti-stall)**: `evidence_delta_vs_prior_round == "none"` AND blocking issues unchanged from prior round — surface stall status, then AskQuestion.
+- **Scope-violation**: `scope_violation.detected == true` — also run `python3 $SKILL/scripts/lib/scope_check.py --thread <slug>` to confirm affected paths, then AskQuestion.
+- **Budget hit**: budget cap reached — show latest verdict summary, then AskQuestion (no `continue` option).
+- **Regression / persistent stall**: `convergence_status` is `stalled` two rounds running or `regressed` — AskQuestion.
 
 ## Red flags / stop when
 
