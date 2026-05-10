@@ -26,6 +26,29 @@ Agent CLIs explore from their CWD on every turn. Without project context files a
 
 ## The process
 
+### 0. Confirm the project root (REQUIRED — ask the user verbatim)
+
+Before any other step, the chat parent MUST ask the user:
+
+> **"What's the absolute path of your PROJECT root (the codebase you want to run roundtable against)? It must NOT be the skill itself (`~/.cursor/skills/agent-roundtable`)."**
+
+Then export it for the session:
+
+```bash
+export ROUNDTABLE_PROJECT_ROOT=<absolute path the user gave>
+[[ -d "$ROUNDTABLE_PROJECT_ROOT" ]] || { echo "ERROR: not a directory: $ROUNDTABLE_PROJECT_ROOT" >&2; }
+```
+
+Why this is REQUIRED: `_common.sh` auto-detects via `git rev-parse --show-toplevel` if the env var is unset, and falls back to the caller's `cwd`. When the chat parent's cwd happens to be the skill itself (common when answering questions about the skill), the auto-detect lands on the skill — turn scripts emit `WARN [_common.sh]: ROUNDTABLE_PROJECT_ROOT=... is the skill's own directory.` and agents end up exploring the skill instead of the user's project. Asking explicitly costs one round-trip and eliminates the warn-and-pray pattern.
+
+To make it persist across sessions (recommended), tell the user to add to their `~/.bashrc` / `~/.zshrc`:
+
+```bash
+export ROUNDTABLE_PROJECT_ROOT=/path/to/their/project
+```
+
+Threads then land at `$ROUNDTABLE_PROJECT_ROOT/.roundtable/threads/<slug>/` automatically.
+
 ### 1. Seed `models.json`
 
 Run:
@@ -96,10 +119,10 @@ If you're using a proxy not on this list, **always** consult the proxy's accepte
 
 ## Stop when
 
+- `ROUNDTABLE_PROJECT_ROOT` is exported to a real directory **and** is NOT the skill itself. Verify with `echo "$ROUNDTABLE_PROJECT_ROOT" && [[ -d "$ROUNDTABLE_PROJECT_ROOT" ]] && echo OK`. The turn scripts emit a `WARN` if confused; act on it.
 - `backend.sh show` reports the actor(s) the user needs as `ok`.
 - The project has `AGENTS.md` (and `CLAUDE.md` if the user uses Claude Code).
 - The project has `.claude/settings.json` with the agent-roundtable deny rules (or an explicit user-customised superset).
-- `ROUNDTABLE_PROJECT_ROOT` resolves to the user's project — never to the skill's own directory. The turn scripts emit a `WARN` if confused; act on it.
 
 ## Hand off
 
