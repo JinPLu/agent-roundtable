@@ -226,37 +226,44 @@ esac
 # contract and is validated post-hoc by tooling that wants strict checks.
 
 _start=$(date +%s)
-set +e
 # stream-json output: each line is an event; final line has {"type":"result"}.
 # Stream goes to stream.jsonl (watchable by idle_watchdog); after run we
 # extract the final result event into last.json so downstream extraction
 # (jq / extract_claude_result.py) keeps working unchanged.
-(
-  if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
-    cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
-      claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
-      < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
-  else
-    cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
-      < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
-  fi
-) &
-_proc_pid=$!
-idle_watchdog "$_proc_pid" "${hist}/stream.jsonl" "$idle_s" 30 &
-_wd_pid=$!
-wait "$_proc_pid"
-_ec=$?
-kill "$_wd_pid" 2>/dev/null || true
-wait "$_wd_pid" 2>/dev/null || true
-set -e
-_dur=$(( $(date +%s) - _start ))
-if [[ "$_ec" -eq 124 ]]; then
-  echo "WARN [claude_turn.sh]: claude killed (exit 124) — wall-clock ${timeout_s}s or idle ${idle_s}s exceeded." >&2
-fi
+#
+# Retry on transient backend errors (Cloudflare 502 / 524 / 503, Anthropic
+# 429 rate-limit). claude-api.org is the most flaky proxy in the catalog
+# (see docs/network-proxy.md). Default 3 attempts; cap configurable via
+# ROUNDTABLE_RETRY_MAX env. After exhaustion emit ROUNDTABLE_FALLBACK_HINT
+# so the chat parent can re-dispatch through cursor-subagent (Anthropic
+# in-process, bypasses the failing proxy).
+_max_retries="${ROUNDTABLE_RETRY_MAX:-3}"
+_attempt=1
+_ec=0
+while :; do
+  set +e
+  (
+    if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
+      cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
+        claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+    else
+      cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+    fi
+  ) &
+  _proc_pid=$!
+  idle_watchdog "$_proc_pid" "${hist}/stream.jsonl" "$idle_s" 30 &
+  _wd_pid=$!
+  wait "$_proc_pid"
+  _ec=$?
+  kill "$_wd_pid" 2>/dev/null || true
+  wait "$_wd_pid" 2>/dev/null || true
+  set -e
 
-# stream-json post-process: pull the final {"type":"result"} event into last.json.
-if [[ -s "${hist}/stream.jsonl" ]]; then
-  python3 -c '
+  # stream-json post-process: pull the final {"type":"result"} event into last.json.
+  if [[ -s "${hist}/stream.jsonl" ]]; then
+    python3 -c '
 import json, sys
 result = None
 for line in open(sys.argv[1]):
@@ -271,6 +278,30 @@ for line in open(sys.argv[1]):
 if result is not None:
     json.dump(result, open(sys.argv[2], "w"))
 ' "${hist}/stream.jsonl" "${hist}/last.json" 2>/dev/null || true
+  fi
+
+  # Decide whether to retry. transient_retry_seconds prints "" if not
+  # retryable (success or fatal); prints sleep-seconds if Cloudflare /
+  # Anthropic gave us a transient hint (429 / 5xx).
+  _retry_wait="$(transient_retry_seconds "${hist}/last.json")"
+  if [[ -z "$_retry_wait" ]]; then
+    break  # success or fatal — no retry
+  fi
+  if [[ "$_attempt" -ge "$_max_retries" ]]; then
+    echo "WARN [claude_turn.sh]: all $_max_retries attempts hit transient backend error (last status: $(python3 -c "import json; print(json.load(open('${hist}/last.json')).get('api_error_status'))" 2>/dev/null || echo "?")); chat parent should fall back to a different actor." >&2
+    echo "ROUNDTABLE_FALLBACK_HINT: actor=claude failed after ${_max_retries} attempts; suggest actor=cursor-subagent (Anthropic in-process, bypasses claude-api.org)." >&2
+    break
+  fi
+  echo "WARN [claude_turn.sh]: attempt ${_attempt}/${_max_retries} hit transient backend error (api_error_status=$(python3 -c "import json; print(json.load(open('${hist}/last.json')).get('api_error_status'))" 2>/dev/null || echo "?")); sleeping ${_retry_wait}s before retry." >&2
+  # Save the failed attempt artifacts before the next attempt overwrites them.
+  cp -f "${hist}/stream.jsonl" "${hist}/stream.attempt${_attempt}.jsonl" 2>/dev/null || true
+  cp -f "${hist}/last.json" "${hist}/last.attempt${_attempt}.json" 2>/dev/null || true
+  sleep "$_retry_wait"
+  _attempt=$(( _attempt + 1 ))
+done
+_dur=$(( $(date +%s) - _start ))
+if [[ "$_ec" -eq 124 ]]; then
+  echo "WARN [claude_turn.sh]: claude killed (exit 124) — wall-clock ${timeout_s}s or idle ${idle_s}s exceeded." >&2
 fi
 
 # Extract final assistant text from last.json into last.md.

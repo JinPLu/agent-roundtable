@@ -128,6 +128,53 @@ safe_repo_git() {
   timeout 3 git -C "$ROUNDTABLE_PROJECT_ROOT" --no-optional-locks "$@" 2>/dev/null || true
 }
 
+# ── transient_retry_seconds ──────────────────────────────────────────────────
+# Inspect a result.json (claude stream-json final event format) and decide
+# whether a transient backend error happened. Print:
+#   <seconds-to-wait>   → caller should sleep that many seconds and retry
+#   (nothing)           → not a retryable error (success, or fatal)
+#
+# Retryable: HTTP 429 / 502 / 503 / 504 / 524 (Cloudflare or origin transient).
+# Fatal: 4xx-non-429 (auth / model-not-found / bad-request); successful
+# completion (is_error: false).
+#
+# Wait time: prefer `retry_after` from the embedded error body (Cloudflare /
+# Anthropic give explicit hints), fall back to 60s for 5xx and 30s for 429.
+#
+# Usage:
+#   wait=$(transient_retry_seconds "$hist/last.json")
+#   if [[ -n "$wait" ]]; then sleep "$wait"; retry; fi
+transient_retry_seconds() {
+  local result_file="$1"
+  [[ -s "$result_file" ]] || { return 0; }
+  python3 - "$result_file" <<'PY'
+import json, re, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+if not d.get("is_error"):
+    sys.exit(0)
+status = d.get("api_error_status") or 0
+try: status = int(status)
+except (TypeError, ValueError): status = 0
+if status not in (429, 502, 503, 504, 524):
+    sys.exit(0)
+# Try to pull retry_after from the result body (Cloudflare / Anthropic).
+body = d.get("result") or ""
+wait = None
+if isinstance(body, str):
+    # Look for a JSON blob in the body string.
+    m = re.search(r'"retry_after"\s*:\s*(\d+)', body)
+    if m:
+        try: wait = int(m.group(1))
+        except ValueError: pass
+if wait is None:
+    wait = 60 if status >= 500 else 30  # 60s for 5xx, 30s for 429
+print(min(wait, 180))  # cap at 3 minutes
+PY
+}
+
 # ── idle_watchdog ────────────────────────────────────────────────────────────
 # Distinguish "thinking long" from "stuck" by watching a streaming progress
 # file (e.g. codex trace.jsonl, claude stream.jsonl). If the file's size+mtime
