@@ -7,7 +7,12 @@
 # Usage:
 #   backend.sh init                            # seed models.json (prints a beginner-friendly walkthrough)
 #   backend.sh help-import                     # reprint the walkthrough any time
-#   backend.sh apply [codex|claude]            # read models.json, write .<actor>_env.local for each `active` actor
+#   backend.sh apply [--no-smoke-test] [codex|claude]
+#                                              # read models.json, write .<actor>_env.local for each `active` actor;
+#                                              # static-checks proxy×short-alias combos, then 1-token smoke pings
+#                                              # each endpoint (skip via --no-smoke-test for offline setup)
+#   backend.sh validate [codex|claude]         # ping each `active` endpoint with cli_arg; fail-fast on 4xx/5xx
+#                                              # WITHOUT writing env files. Use between edits to verify a config.
 #   backend.sh show  [codex|claude]            # inspect current state (api_key redacted)
 #   backend.sh clear <codex|claude>            # remove .<actor>_env.local
 #   backend.sh codex  <base-url> <api-key> [default-model]                     # one-shot direct write (bypasses models.json)
@@ -62,10 +67,27 @@ THE CONTRACT
                codex  → any OpenAI-compatible endpoint
                claude → any Anthropic-compatible endpoint
   cli_arg    The exact model id the API expects in its 'model' param
-             (e.g. "gpt-5", "claude-opus-4-5", "deepseek-v4-pro[1m]").
-             NOT your nickname for it.
+             (e.g. "gpt-5.4", "claude-opus-4-7", "deepseek-v4-pro[1m]").
+             NOT your nickname for it. NOT the CLI short alias
+             ("opus" / "sonnet" / "haiku" / "gpt-5"). See PROXY QUIRK below.
   base_url   The API root URL, no trailing slash.
   api_key    Your secret key.
+
+⚠ PROXY QUIRK — read this if base_url is anything other than
+  https://api.anthropic.com or https://api.openai.com :
+    When you talk to OFFICIAL Anthropic / OpenAI, the CLI accepts short
+    aliases ("opus", "sonnet", "gpt-5") and resolves them to a current
+    dated slug. PROXIES (claude-api.org / cialloapi.cn / DeepSeek shim
+    / OpenRouter / etc.) do NOT do this resolution — they reject any
+    model id they don't recognise verbatim. Per claude-api.org's FAQ
+    (§503 No available accounts), this is the #1 cause of 502/503:
+
+      ❌ "opus"       (CLI alias; resolved to dated slug; rejected by proxy)
+      ✅ "claude-opus-4-7"   (proxy-precise id; passes through verbatim)
+
+    Rule of thumb: if base_url ≠ official vendor, use the EXACT model
+    id from your provider's docs (claude-api.org → "claude-opus-4-7";
+    cialloapi → "gpt-5.4" / "gpt-5.5"; DeepSeek → "deepseek-v4-pro[1m]").
 
 ────────────────────────────────────────────────────────
 STEP 1 — open the file in your editor
@@ -96,6 +118,23 @@ STEP 2 — replace the \`_template\` entry under "models"
     "endpoint": {
       "base_url": "https://api.anthropic.com",
       "api_key":  "sk-ant-..."
+    }
+  }
+
+  ── claude-api.org (Anthropic-compat proxy, 0.7x discount) ──
+  (Common CN-accessible Anthropic proxy. cli_arg + the three *_model
+  fields MUST be proxy-precise dated ids — short aliases like "opus"
+  cause 502/503. See https://doc.claude-api.org/channels for the
+  current accepted model list.)
+  "claude-opus": {
+    "actor":   "claude",
+    "cli_arg": "claude-opus-4-7",
+    "endpoint": {
+      "base_url":     "https://claude-api.org",
+      "api_key":      "sk-...",
+      "opus_model":   "claude-opus-4-7",
+      "sonnet_model": "claude-sonnet-4-6",
+      "haiku_model":  "claude-haiku-4-5"
     }
   }
 
@@ -145,15 +184,28 @@ COMMON MISTAKES
   ✗ entry key starts with "_"      → skipped as placeholder
   ✗ actor is the model name        → must be exactly "codex" or "claude"
   ✗ cli_arg is your nickname       → must be the model id the API expects
+  ✗ cli_arg is "opus"/"sonnet"
+    /"haiku"/"gpt-5"/"gpt-4" AND
+    base_url is a non-vendor proxy → see PROXY QUIRK above; \`apply\`
+                                    will reject this combo with an
+                                    explicit ERROR
   ✗ base_url has trailing slash    → drop it
   ✗ values still contain
     "REPLACE_WITH:*" prefixes      → fill them in or delete the entry
+  ✗ apply succeeds but turns 502   → run \`backend.sh validate\` to ping
+                                    the endpoint with cli_arg before
+                                    paying for a real turn
 
 ────────────────────────────────────────────────────────
 USEFUL COMMANDS (any time)
 ────────────────────────────────────────────────────────
   scripts/backend.sh show          inspect import status (key redacted)
   scripts/backend.sh apply         re-write env files after edits
+                                   (runs smoke test by default; use
+                                    --no-smoke-test to skip)
+  scripts/backend.sh validate      ping every active endpoint with
+                                   cli_arg; fail-fast on 4xx/5xx without
+                                   touching env files
   scripts/backend.sh help-import   print this walkthrough again
   scripts/backend.sh clear codex   un-import an actor
 
@@ -323,17 +375,138 @@ HINT
     ;;
 
   apply)
-    only="${1:-}"
+    smoke_flag="run"; only=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --no-smoke-test|--no-smoke) smoke_flag="skip"; shift;;
+        codex|claude)               only="$1"; shift;;
+        --) shift; break;;
+        -*) echo "ERROR: unknown apply option: $1" >&2; exit 2;;
+        *)  only="$1"; shift;;
+      esac
+    done
     mf="${SKILL_DIR}/models.json"
     [[ -r "$mf" ]] || { echo "ERROR: $mf not found. Run: $0 init" >&2; exit 2; }
-    python3 - "$mf" "$0" "$only" <<'PY'
-import json, sys, subprocess, pathlib
-mf, script, only = sys.argv[1], sys.argv[2], sys.argv[3]
+    python3 - "$mf" "$0" "$only" "$smoke_flag" <<'PY'
+import json, sys, subprocess, pathlib, urllib.parse
+mf, script, only, smoke_flag = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 data = json.loads(pathlib.Path(mf).read_text())
 active = data.get("active") or {}
 models = data.get("models") or {}
 targets = [only] if only else ["codex", "claude"]
 applied = 0
+# Track {actor: (base_url, key, cli_arg, claude_extras_or_None)} for post-apply smoke test.
+smoked: list = []
+
+# === Static check: known proxy host × known CLI short alias = ERROR ==========
+# Why: proxies (claude-api.org / cialloapi / DeepSeek-shim / OpenRouter) do not
+# resolve CLI aliases like "opus" / "gpt-5" to dated slugs the way the OFFICIAL
+# vendor APIs do. Sending a short alias to a proxy returns 502/503 with bodies
+# like "No available accounts" — the #1 setup failure mode (claude-api.org FAQ
+# §503). Catching it here saves the user a 600s real-turn 502.
+PROXY_RULES = {
+    "claude-api.org":   {"aliases": {"opus", "sonnet", "haiku"},
+                         "doc": "https://doc.claude-api.org/channels"},
+    "cialloapi.cn":     {"aliases": {"gpt-5", "gpt-4", "o1", "o3"},
+                         "doc": "https://cialloapi.cn dashboard (model list)"},
+    "api.deepseek.com": {"aliases": {"opus", "sonnet", "haiku"},
+                         "doc": "https://api-docs.deepseek.com/"},
+    "openrouter.ai":    {"aliases": {"opus", "sonnet", "haiku",
+                                     "gpt-5", "gpt-4", "o1", "o3"},
+                         "doc": "https://openrouter.ai/models"},
+}
+def _violations(base_url: str, cli_arg: str, *, label: str = "cli_arg"):
+    """Yield (proxy_host, doc_url, label) for each rule violated by this pair."""
+    if not base_url or not cli_arg:
+        return
+    host = urllib.parse.urlparse(base_url).hostname or ""
+    for proxy_host, rule in PROXY_RULES.items():
+        if proxy_host in host and cli_arg in rule["aliases"]:
+            yield (proxy_host, rule["doc"], label)
+            return  # one match per pair is enough
+# =============================================================================
+
+# === C. SMOKE TEST: minimal 1-token ping per actor ==========================
+# Why: catches ALL endpoint failures the static check misses — base_url typos,
+# expired keys, model id not in vendor's accepted list, transient 5xx, DNS
+# breakage. Fail-fast in seconds instead of after a 600s real turn. Uses stdlib
+# urllib only (no curl dep). Short timeout (15s) so a hung proxy doesn't block
+# setup.
+import urllib.request
+import urllib.error
+SMOKE_TIMEOUT_S = 15
+# Many proxies sit behind Cloudflare with default-deny rules that filter on
+# User-Agent (stdlib urllib's default 'Python-urllib/3.x' triggers CF code 1010
+# Forbidden). We send a curl-shaped UA — proxies invariably whitelist curl.
+SMOKE_UA = "curl/8.4.0 agent-roundtable-validator"
+def _smoke_codex(base_url: str, api_key: str, model: str) -> tuple[bool, str]:
+    """Return (ok, message). OpenAI-compatible /chat/completions."""
+    url = base_url.rstrip("/") + "/chat/completions"
+    body = json.dumps({"model": model, "messages": [{"role": "user", "content": "ping"}],
+                       "max_tokens": 1, "stream": False}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "User-Agent": SMOKE_UA,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=SMOKE_TIMEOUT_S) as r:
+            return True, f"HTTP {r.status} (model accepted)"
+    except urllib.error.HTTPError as e:
+        body_preview = (e.read() or b"").decode("utf-8", "replace")[:500]
+        return False, f"HTTP {e.code} {e.reason} — body[:500]={body_preview!r}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return False, f"network error: {e!r}"
+def _smoke_claude(base_url: str, api_key: str, model: str) -> tuple[bool, str]:
+    """Return (ok, message). Anthropic-compatible /v1/messages.
+    Uses Bearer + anthropic-version header — works against official Anthropic
+    AND known Anthropic-compat proxies (claude-api.org, DeepSeek-shim).
+    """
+    url = base_url.rstrip("/") + "/v1/messages"
+    body = json.dumps({"model": model, "max_tokens": 1,
+                       "messages": [{"role": "user", "content": "ping"}]}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Authorization": f"Bearer {api_key}",
+        "x-api-key": api_key,                # official Anthropic prefers this
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+        "User-Agent": SMOKE_UA,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=SMOKE_TIMEOUT_S) as r:
+            return True, f"HTTP {r.status} (model accepted)"
+    except urllib.error.HTTPError as e:
+        body_preview = (e.read() or b"").decode("utf-8", "replace")[:500]
+        return False, f"HTTP {e.code} {e.reason} — body[:500]={body_preview!r}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return False, f"network error: {e!r}"
+def _run_smoke(actor: str, base: str, key: str, cli_arg: str, claude_extras) -> bool:
+    """Smoke-test one actor; return True if all checks pass."""
+    print(f"SMOKE {actor}: ping {base!r} model={cli_arg!r} ... ", end="", flush=True)
+    if actor == "codex":
+        ok, msg = _smoke_codex(base, key, cli_arg)
+    else:
+        ok, msg = _smoke_claude(base, key, cli_arg)
+    print("OK" if ok else "FAIL")
+    print(f"  → {msg}")
+    if not ok:
+        return False
+    # For claude: also verify opus/sonnet/haiku tier models if they differ.
+    if actor == "claude" and claude_extras:
+        op, son, hai = claude_extras
+        seen = {cli_arg}
+        for label, mid in [("opus_model", op), ("sonnet_model", son), ("haiku_model", hai)]:
+            if mid in seen or not mid:
+                continue
+            seen.add(mid)
+            print(f"SMOKE {actor}: ping {base!r} {label}={mid!r} ... ", end="", flush=True)
+            ok2, msg2 = _smoke_claude(base, key, mid)
+            print("OK" if ok2 else "FAIL")
+            print(f"  → {msg2}")
+            if not ok2:
+                return False
+    return True
+# =============================================================================
 for actor in targets:
     if actor not in ("codex", "claude"):
         print(f"ERROR: unknown actor {actor!r}", file=sys.stderr); sys.exit(2)
@@ -387,10 +560,29 @@ for actor in targets:
         cmd = [script, actor, base, key, op_model, son_model, hai_model, effort]
     else:
         cmd = [script, actor, base, key, cli_arg]
+    # ── B. STATIC CHECK: known proxy host × known short alias ────────────────
+    # Run BEFORE any subprocess write — fail-fast keeps the env file in its
+    # last-known-good state instead of overwriting it with a broken combo.
+    static_errs = list(_violations(base, cli_arg, label="cli_arg"))
+    if actor == "claude":
+        static_errs += list(_violations(base, op_model, label="opus_model"))
+        static_errs += list(_violations(base, son_model, label="sonnet_model"))
+        static_errs += list(_violations(base, hai_model, label="haiku_model"))
+    if static_errs:
+        print(f"ERROR {actor}: model={mid!r} fails static check — base_url is a known proxy that requires exact model ids:", file=sys.stderr)
+        for proxy_host, doc, label in static_errs:
+            bad_val = {"cli_arg": cli_arg, "opus_model": op_model if actor == "claude" else "",
+                       "sonnet_model": son_model if actor == "claude" else "",
+                       "haiku_model": hai_model if actor == "claude" else ""}.get(label, "?")
+            print(f"  • endpoint.{label}={bad_val!r} is a CLI short alias rejected by {proxy_host}. Replace with a proxy-precise dated id from {doc}.", file=sys.stderr)
+        print(f"  Hint: see `backend.sh help-import` PROXY QUIRK section, or skills/roundtable-setup/SKILL.md §Provider quirks.", file=sys.stderr)
+        sys.exit(2)
     r = subprocess.run(cmd, check=False)
     if r.returncode != 0:
         sys.exit(r.returncode)
     applied += 1
+    smoked.append((actor, base, key, cli_arg,
+                   (op_model, son_model, hai_model) if actor == "claude" else None))
     if actor == "claude":
         eff = ep.get("claude_effort_level") or ep.get("effort_level") or ""
         print(
@@ -406,6 +598,119 @@ for actor in targets:
 if applied == 0:
     print("Nothing applied. Edit models.json: set `active.{codex,claude}` to a model id whose entry has an `endpoint` block with both base_url and api_key.", file=sys.stderr)
     sys.exit(2)
+# ── C. SMOKE TEST: ping each freshly-applied endpoint ───────────────────────
+if smoke_flag == "skip":
+    print("(smoke test skipped: --no-smoke-test)")
+else:
+    print("--- smoke test (1-token ping per actor; --no-smoke-test to skip) ---")
+    smoke_failed = []
+    for actor, base, key, cli_arg, claude_extras in smoked:
+        if not _run_smoke(actor, base, key, cli_arg, claude_extras):
+            smoke_failed.append(actor)
+    if smoke_failed:
+        print(f"ERROR: smoke test FAILED for: {','.join(smoke_failed)}.", file=sys.stderr)
+        print("  The .{actor}_env.local file IS written (apply already returned), but the endpoint did", file=sys.stderr)
+        print("  not accept a 1-token ping with these credentials + cli_arg. Common causes:", file=sys.stderr)
+        print("    - cli_arg is not in the proxy's accepted-model list (check vendor doc)", file=sys.stderr)
+        print("    - base_url has a typo or wrong path (e.g. needs /v1)", file=sys.stderr)
+        print("    - api_key is expired, wrong-channel, or out of credits", file=sys.stderr)
+        print("    - proxy is temporarily down (re-run `backend.sh validate` in a few minutes)", file=sys.stderr)
+        sys.exit(3)
+    print("--- smoke test: all OK ---")
+PY
+    ;;
+
+  validate)
+    mf="${SKILL_DIR}/models.json"
+    [[ -r "$mf" ]] || { echo "ERROR: $mf not found. Run: $0 init" >&2; exit 2; }
+    only="${1:-}"
+    python3 - "$mf" "$only" <<'PY'
+"""validate — read models.json, ping each `active` actor's endpoint with its
+cli_arg, fail-fast on 4xx/5xx. Does NOT touch .codex_env.local / .claude_env.local
+— this is the dry-run path users invoke between edits to confirm a config
+without overwriting their last-known-good env files."""
+import json, sys, pathlib, urllib.parse, urllib.request, urllib.error
+mf, only = sys.argv[1], sys.argv[2]
+data = json.loads(pathlib.Path(mf).read_text())
+active = data.get("active") or {}
+models = data.get("models") or {}
+targets = [only] if only else ["codex", "claude"]
+SMOKE_TIMEOUT_S = 15
+SMOKE_UA = "curl/8.4.0 agent-roundtable-validator"
+def _smoke(actor, base, key, model):
+    base = base.rstrip("/")
+    if actor == "codex":
+        url = base + "/chat/completions"
+        body = {"model": model, "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1, "stream": False}
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json",
+                   "User-Agent": SMOKE_UA}
+    else:
+        url = base + "/v1/messages"
+        body = {"model": model, "max_tokens": 1,
+                "messages": [{"role": "user", "content": "ping"}]}
+        headers = {"Authorization": f"Bearer {key}", "x-api-key": key,
+                   "anthropic-version": "2023-06-01", "Content-Type": "application/json",
+                   "User-Agent": SMOKE_UA}
+    req = urllib.request.Request(url, data=json.dumps(body).encode(),
+                                 method="POST", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=SMOKE_TIMEOUT_S) as r:
+            return True, f"HTTP {r.status}"
+    except urllib.error.HTTPError as e:
+        body_preview = (e.read() or b"").decode("utf-8", "replace")[:500]
+        return False, f"HTTP {e.code} {e.reason} — {body_preview!r}"
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        return False, f"network error: {e!r}"
+fails = []
+for actor in targets:
+    if actor not in ("codex", "claude"):
+        print(f"ERROR: unknown actor {actor!r}", file=sys.stderr); sys.exit(2)
+    mid = active.get(actor)
+    if not mid or mid.startswith("_"):
+        print(f"SKIP {actor}: active.{actor}={mid!r}"); continue
+    m = models.get(mid) or {}
+    ep = m.get("endpoint") or {}
+    base, key = ep.get("base_url", ""), ep.get("api_key", "")
+    cli_arg = m.get("cli_arg") or mid
+    if not base or not key:
+        # Try secrets.json for api_key_ref
+        ref = ep.get("api_key_ref", "")
+        if ref.startswith("secrets:"):
+            sp = pathlib.Path(mf).parent / "models.secrets.json"
+            if sp.exists():
+                rest = ref[len("secrets:"):]
+                parts = rest.rsplit(".", 1)
+                if len(parts) == 2:
+                    sec = json.loads(sp.read_text())
+                    key = (sec.get(parts[0]) or {}).get(parts[1], "")
+        if not base or not key:
+            print(f"SKIP {actor}: model={mid!r} missing base_url or api_key"); continue
+    print(f"VALIDATE {actor}: {base!r} model={cli_arg!r} ... ", end="", flush=True)
+    ok, msg = _smoke(actor, base, key, cli_arg)
+    print("OK" if ok else "FAIL")
+    print(f"  → {msg}")
+    if not ok:
+        fails.append(actor)
+    if actor == "claude":
+        op = ep.get("opus_model") or ep.get("claude_opus_model") or cli_arg
+        son = ep.get("sonnet_model") or ep.get("claude_sonnet_model") or op
+        hai = ep.get("haiku_model") or ep.get("claude_haiku_model") or son
+        seen = {cli_arg}
+        for label, mm in [("opus_model", op), ("sonnet_model", son), ("haiku_model", hai)]:
+            if mm in seen or not mm:
+                continue
+            seen.add(mm)
+            print(f"VALIDATE {actor}: {base!r} {label}={mm!r} ... ", end="", flush=True)
+            ok2, msg2 = _smoke(actor, base, key, mm)
+            print("OK" if ok2 else "FAIL")
+            print(f"  → {msg2}")
+            if not ok2 and actor not in fails:
+                fails.append(actor)
+if fails:
+    print(f"FAIL: {','.join(fails)}", file=sys.stderr)
+    sys.exit(3)
+print("--- validate: all OK ---")
 PY
     ;;
 

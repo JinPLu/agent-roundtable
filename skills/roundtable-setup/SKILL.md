@@ -45,7 +45,9 @@ bash $SKILL/scripts/backend.sh apply
 bash $SKILL/scripts/backend.sh show
 ```
 
-`apply` writes `$SKILL/.codex_env.local` and/or `$SKILL/.claude_env.local` (chmod 600) — these are sourced by the turn scripts at dispatch time. `show` prints redacted state so the user can verify import without leaking the API key.
+`apply` performs three things in order: (a) **static check** — reject known-bad combinations like `cli_arg: "opus"` paired with a proxy `base_url` (e.g. `claude-api.org`) before writing any file; (b) write `$SKILL/.codex_env.local` and/or `$SKILL/.claude_env.local` (chmod 600); (c) **smoke test** — send one 1-token ping per actor and fail-fast on 4xx/5xx so credential / cli_arg / base_url errors surface in seconds, not after a 600s real turn. Pass `--no-smoke-test` to skip step (c) (offline / air-gapped scenarios). `show` then prints redacted state.
+
+If `apply` rejects a combination at step (a), the error message points at the exact `cli_arg` field to fix — change the short alias to the proxy-precise model id (see Provider quirks below).
 
 ### 3. Generate project context (only if missing)
 
@@ -76,6 +78,21 @@ cp "$SKILL/templates/.claude/settings.json" "$ROUNDTABLE_PROJECT_ROOT/.claude/se
 The template denies destructive git operations (`git push`, `git reset --hard`, `git rebase`, `git filter-branch`, `git update-ref`) and reads of common secrets (`.env*`, `~/.aws/**`, `~/.ssh/**`, `credentials*`, `*secret*`, `*.pem`). With this file present, `claude_turn.sh` skips its inline `--disallowedTools` fallback in favour of project-level settings — same coverage, source-controllable, user-overridable.
 
 If the user already has a `.claude/settings.json`, **do not overwrite**. Diff the deny list and recommend additions if any of the above are missing.
+
+## Provider quirks (read before filling `cli_arg`)
+
+The CLIs (`codex` / `claude`) accept short model aliases — `"opus"`, `"sonnet"`, `"gpt-5"` — and silently resolve them to a current dated slug (e.g. `claude-opus-4-5-20250929`) before sending the API request. **Official vendors** (`api.anthropic.com`, `api.openai.com`) accept those resolved slugs. **Proxies** (`claude-api.org`, `cialloapi.cn`, DeepSeek-shim, OpenRouter, etc.) do **not** do alias resolution — they reject any model id they don't recognise verbatim, returning 502 / 503 with bodies like `"No available accounts"` (per [claude-api.org FAQ §503](https://doc.claude-api.org/faq)).
+
+This produces a setup-time footgun: the user copies an example with `cli_arg: "opus"` and `base_url: "https://api.anthropic.com"`, then later flips `base_url` to a proxy without realising `cli_arg` has to flip too. The `apply` static check now catches the most common combinations of this:
+
+| `base_url` host | Disallowed `cli_arg` (will be rejected) | Use instead |
+|---|---|---|
+| `claude-api.org` | `opus`, `sonnet`, `haiku` | `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-haiku-4-5` (or whatever's in the [channel doc](https://doc.claude-api.org/channels)) |
+| `cialloapi.cn` | `gpt-5`, `gpt-4`, `o1`, `o3` (no version suffix) | `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, etc. |
+| `*.deepseek.com/anthropic` | `opus`, `sonnet`, `haiku` | the upstream id, e.g. `deepseek-v4-pro[1m]` |
+| `openrouter.ai/api/v1` | any short alias | the OpenRouter-namespaced id, e.g. `anthropic/claude-opus-4` |
+
+If you're using a proxy not on this list, **always** consult the proxy's accepted-model doc and use the exact id. The smoke test (step 2c above) catches everything else.
 
 ## Stop when
 
