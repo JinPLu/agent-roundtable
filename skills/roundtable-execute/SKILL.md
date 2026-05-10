@@ -1,6 +1,6 @@
 ---
 name: roundtable-execute
-description: Use when a single executor should implement artifacts/PLAN.md (or GOAL.md) in the main worktree, with a mandatory post-run scope check surfaced to the user.
+description: Use when a single executor should implement artifacts/PLAN.md (from import_plan.sh, Cursor, or roundtable-plan) plus GOAL.md, with mandatory post-run scope check.
 disable-model-invocation: true
 ---
 
@@ -14,7 +14,7 @@ disable-model-invocation: true
 
 ## Use when
 
-- You have a settled plan (`artifacts/PLAN.md` from `roundtable-plan`, or a filled-in `GOAL.md`) and need one implementation pass.
+- You have a settled plan **`artifacts/PLAN.md`** (from `import_plan.sh`, Cursor, or `roundtable-plan` Phase B) and a filled-in **`GOAL.md`** (**In-scope paths**, **Definition of done**) and need one implementation pass.
 - You want execution with an audit trail in `THREAD.md` and a clear **post-exec scope surface** (see below).
 - The user is not asking for multiple competing candidate implementations (that race pattern is `docs/advanced.md`).
 
@@ -34,18 +34,29 @@ Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the 
 
 ### Phase 1: implement
 
-1. Ensure `GOAL.md` exists in the thread and lists **In-scope paths** and **Out-of-scope** (see `templates/GOAL.md.tmpl`). Plans from `roundtable-plan` should align with these paths.
-2. Dispatch one executor turn, e.g.:
+1. **Plan snapshot (required when the canonical plan lives outside the thread)**  
+   If the user’s plan is a Cursor file (`~/.cursor/plans/*.plan.md` or similar) or any path outside `<thread>/artifacts/`, run **`import_plan.sh`** *before* dispatch so **`artifacts/PLAN.md`** is a byte-accurate copy and `GOAL.md` **Plan source** lists the **Original source path** and **Last imported at**:
 
-```bash
-$SKILL/scripts/codex_turn.sh  <slug> --role executor --task "<concrete task from PLAN.md / GOAL.md>"
-# or
-$SKILL/scripts/claude_turn.sh <slug> --role executor --task "…"
-```
+   ```bash
+   bash $SKILL/scripts/import_plan.sh <slug> /absolute/path/to/plan.md [--reviewed yes|no|N/A]
+   ```
 
-3. Wait for completion. Inspect the five-part body in `THREAD.md` and the actual diff in the repo.
+   If you already edited `artifacts/PLAN.md` in-repo and that is the only source of truth, ensure **Original source path** in `GOAL.md` says `in-thread only` and **Last imported at** is accurate or `N/A`.
 
-4. **Optional:** ask the executor to add `artifacts/EXEC_REPORT.md` (what changed, how to verify, follow-ups) — not required by the scripts but useful for hand-off.
+2. Ensure `GOAL.md` lists **In-scope paths** and **Out-of-scope** (see `templates/GOAL.md.tmpl`). The plan body must align with those paths.
+
+3. Dispatch one executor turn. The `--task` MUST explicitly require reading the plan before edits, e.g.:
+
+   ```bash
+   $SKILL/scripts/codex_turn.sh  <slug> --role executor \
+     --task "Read <thread_dir>/artifacts/PLAN.md in full (and GOAL.md). Then implement step-by-step in plan order; cite plan section titles in Did:."
+   ```
+
+   (Adjust wording if `artifacts/PLAN.md` is genuinely absent — executor falls back to `GOAL.md` + task only.)
+
+4. Wait for completion. Inspect the five-part body in `THREAD.md` and the actual diff in the repo.
+
+5. **Optional:** ask the executor to add `artifacts/EXEC_REPORT.md` (what changed, how to verify, follow-ups) — not required by the scripts but useful for hand-off.
 
 ### Phase 2: scope check (orchestrator / parent — required)
 

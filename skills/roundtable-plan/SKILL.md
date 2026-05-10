@@ -10,6 +10,23 @@ disable-model-invocation: true
 
 Use when the user wants cross-vendor perspectives before committing to code **or** when they need an option matrix and trade-offs first (the former `roundtable-discuss` flow is **Phase A only**).
 
+## Already have a Cursor plan?
+
+Many users draft in **Cursor Plan mode** first, then use roundtable to **review / stress-test** the plan and edit it in place. That workflow **skips Phase A and Phase B** here:
+
+1. `new_thread.sh <slug> "<goal>"` (or reuse an existing thread).
+2. **Import** the canonical plan file into the thread so the executor has one auditable copy:
+
+   ```bash
+   bash $SKILL/scripts/import_plan.sh <slug> /absolute/path/to/.cursor/plans/your.plan.md [--reviewed no]
+   ```
+
+   Re-run the same command after you edit the source file so `artifacts/PLAN.md` stays in sync.
+3. Point **`roundtable-review`** at `artifacts/PLAN.md` (or the thread’s `GOAL.md` rubric) if you want cross-vendor blind review; merge feedback into the plan, then **`import_plan.sh` again** if the source of truth was outside the thread.
+4. Hand off to **`roundtable-execute`** — the executor role reads **`artifacts/PLAN.md` in full** before coding when `GOAL.md` **Plan source** is present (see `roles/executor.system.md`).
+
+Use **Phase A / B below** only when you are **not** starting from a Cursor plan and want multi-model option discovery + `artifacts/PLAN.md` from scratch.
+
 Planning is split into **Phase A** (research / divergence → `artifacts/options.md`) and **Phase B** (synthesis / convergence → `artifacts/PLAN.md`). The chat parent decides whether to run both phases in one session or stop for a human checkpoint after Phase A.
 
 ## Stop-after Phase A (discuss-equivalent)

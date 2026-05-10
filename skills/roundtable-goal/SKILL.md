@@ -60,7 +60,7 @@ Delegate to **`skills/roundtable-plan/SKILL.md`** (cross-vendor fan-out → `art
 
 ### Phase 2: execute
 
-Delegate to **`skills/roundtable-execute/SKILL.md`** (single executor, main worktree). Goal-loop constraint: run `python3 $SKILL/scripts/lib/scope_check.py --thread <slug>` after the turn; on `VIOLATION`, do **not** advance to Phase 3 — use `AskQuestion` (see Phase 5) to decide revert / re-scope, then retry Phase 2.
+Delegate to **`skills/roundtable-execute/SKILL.md`** (single executor, main worktree). Before Phase 1, if the user edited a Cursor plan outside the thread, run **`import_plan.sh <slug> <plan-path>`** so `artifacts/PLAN.md` matches the reviewed file. Goal-loop constraint: run `python3 $SKILL/scripts/lib/scope_check.py --thread <slug>` after the turn; on `VIOLATION`, do **not** advance to Phase 3 — use `AskQuestion` (see Phase 5) to decide revert / re-scope, then retry Phase 2.
 
 ### Phase 3: parallel blind review
 

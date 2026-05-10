@@ -3,6 +3,24 @@
 ## One-line goal
 {{GOAL_ONE_LINE}}
 
+## Plan source
+
+Bind an executable plan to this thread so the **executor** reads **`artifacts/PLAN.md`** end-to-end before coding (see `roles/executor.system.md`).
+
+- **Authoritative copy in thread**: [`artifacts/PLAN.md`](artifacts/PLAN.md) — overwritten each time you run `import_plan.sh`; re-import after you edit the source file (e.g. Cursor `.plan.md`).
+- **Original source path**: *(run `import_plan.sh` to fill, or `in-thread only` if you only edit `artifacts/PLAN.md` by hand)*
+- **Last imported at**: *(ISO8601 from last `import_plan.sh`)*
+- **Cross-vendor review completed**: `no` — set to `yes` after `roundtable-review` on the plan (or after merging review edits into `artifacts/PLAN.md`).
+- **Executor MUST read plan in full before coding**: `yes` — implement steps **in order**; cite plan headings / step numbers in the executor **Did:** section.
+
+To copy a Cursor plan into the thread (updates this section and refreshes `artifacts/PLAN.md`):
+
+```bash
+bash $SKILL/scripts/import_plan.sh {{SLUG}} /absolute/path/to/plan.md --reviewed no
+```
+
+If `artifacts/PLAN.md` was produced only by **`roundtable-plan`** Phase B, set **Original source path** to `roundtable-plan Phase B` and leave **Last imported at** as `N/A`.
+
 ## Definition of done
 - [ ] (fill in concrete acceptance criteria)
 

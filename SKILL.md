@@ -17,12 +17,12 @@ Read the sub-skill that matches the user's intent **before** taking any action. 
 | Configure / set API keys / generate `AGENTS.md` for a fresh checkout | `skills/roundtable-setup/SKILL.md` |
 | Open-ended design question, architecture/planning, or cross-vendor research → options then executable plan | `skills/roundtable-plan/SKILL.md` |
 | Cross-vendor blind review, audit, PR check — verdict only, no code changes | `skills/roundtable-review/SKILL.md` |
-| Single executor implements `artifacts/PLAN.md` / `GOAL.md`; scope check after diff | `skills/roundtable-execute/SKILL.md` |
+| Single executor implements **`artifacts/PLAN.md`** (authoritative) + `GOAL.md`; sync external Cursor plans via `import_plan.sh` before execute | `skills/roundtable-execute/SKILL.md` |
 | Orchestrated plan → execute → review loops with budget / stall / scope control | `skills/roundtable-goal/SKILL.md` |
 
 ## Hard rules (apply to every sub-skill)
 
-1. **Evidence-grounded orchestration.** The chat parent (a) **reads on-disk evidence before recommending, dispatching, or summarising** — `models.json` entries for any actor proposed; `GOAL.md` before discussing scope or success criteria; `THREAD.md` tail and the latest `verdict.json` for any thread in flight; the actual source files or `git diff` before recommending fixes. Research scripts (`research_cache.py`) are necessary but **not sufficient** — they confirm freshness, not content. (b) **Never produces content that should come from a turn** (reviewer verdicts, executor diffs, planner option matrices, aggregated plans). If a request fits a sub-skill's deliverable, dispatch — do not answer inline from memory or a `WebSearch` skim.
+1. **Evidence-grounded orchestration.** The chat parent (a) **reads on-disk evidence before recommending, dispatching, or summarising** — `models.json` entries for any actor proposed; `GOAL.md` (including **Plan source**) before discussing scope or success criteria; **`artifacts/PLAN.md`** when executing or reviewing a plan-bound thread; `THREAD.md` tail and the latest `verdict.json` for any thread in flight; the actual source files or `git diff` before recommending fixes. Research scripts (`research_cache.py`) are necessary but **not sufficient** — they confirm freshness, not content. (b) **Never produces content that should come from a turn** (reviewer verdicts, executor diffs, planner option matrices, aggregated plans). If a request fits a sub-skill's deliverable, dispatch — do not answer inline from memory or a `WebSearch` skim.
 
 2. **Dispatch via the Confirmation block.** For every turn: (i) run `python3 scripts/print_dispatch_block.py --model <id> --role <role> [--effort <e>] [--thread <slug>]` and paste its stdout verbatim — do not hand-compose; (ii) collect approval via the `AskQuestion` in [Confirmation response](#confirmation-response). `go` is the only trigger for exporting `ROUNDTABLE_DISPATCH_CONFIRMED=1`. Headless callers may pre-export it or pass `--force`. Turn scripts refuse otherwise via `_common.sh:check_dispatch_confirmed`.
 
@@ -83,12 +83,13 @@ The chat parent MUST run `route.sh ... --estimate` (or `python3 scripts/lib/rout
 
 ## Substrate at a glance
 
-**User-facing scripts** (the 4 you actually call):
+**User-facing scripts** (the 5 you actually call):
 
 | Script | Purpose |
 |---|---|
 | `backend.sh` | Initialise / show / update model registry + API keys |
 | `new_thread.sh` | Create a new thread directory |
+| `import_plan.sh` | Copy a Cursor / external plan into `artifacts/PLAN.md` and refresh `GOAL.md` **Plan source** |
 | `codex_turn.sh` / `claude_turn.sh` | Dispatch one turn against a thread |
 
 **Agent-orchestrator scripts** (the chat parent calls these per SKILL.md instructions):

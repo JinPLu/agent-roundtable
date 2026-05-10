@@ -76,4 +76,5 @@ render "${SKILL_DIR}/templates/OPEN_QUESTIONS.md.tmpl"  "${dir}/OPEN_QUESTIONS.m
 ln -sfn "${dir}" "${THREADS_ROOT}/latest"
 
 echo "thread_dir=${dir}"
-echo "Edit GOAL.md to fill in scope/DoD before dispatching the first turn."
+echo "Edit GOAL.md (scope / DoD / Plan source). Import a Cursor plan: bash scripts/import_plan.sh ${slug} /path/to/plan.md"
+echo "Dispatch only after GOAL.md is ready."
