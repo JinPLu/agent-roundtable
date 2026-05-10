@@ -228,7 +228,7 @@ else:
     rows = []
     for mid, m in models.items():
         actor = m.get("actor", "?")
-        cli   = m.get("cli_arg", mid)
+        cli   = str(m.get("cli_arg") or mid)
         if mid.startswith("_") or _is_placeholder(actor):
             ep_status = "⚠ PLACEHOLDER (fill in or delete)"
         elif actor == "cursor-subagent":

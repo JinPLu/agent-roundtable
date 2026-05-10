@@ -153,6 +153,8 @@ def recommend(
         aliases = []
 
     all_rows = []
+    if isinstance(aliases, dict):
+        aliases = [v for k, v in aliases.items() if k != "effort"]
     for alias in aliases:
         model = models.get(alias)
         if model and model.get("actor") in available:

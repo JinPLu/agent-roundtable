@@ -356,19 +356,23 @@ import json, sys
 reg=json.load(open(sys.argv[1]))
 actor, role = sys.argv[2], sys.argv[3]
 mo, eo = sys.argv[4], sys.argv[5]
-# role_defaults[role] is a list of model aliases, not a dict keyed by actor.
-aliases = reg.get("role_defaults", {}).get(role, [])
+aliases = reg.get("role_defaults", {}).get(role, {})
 models = reg.get("models", {})
 alias = mo or ""
 if not alias:
-    # Find the first alias whose "actor" field matches the requested actor.
-    matched = next((a for a in aliases if models.get(a, {}).get("actor") == actor), None)
-    if matched:
-        alias = matched
-    elif aliases:
-        print(f"WARN: no alias for actor '{actor}' in role '{role}'; falling back to first alias '{aliases[0]}'", file=sys.stderr)
-        alias = aliases[0]
-effort = eo or "medium"
+    if isinstance(aliases, dict):
+        alias = aliases.get(actor)
+        if not alias:
+            fallback = [v for k, v in aliases.items() if k != "effort"]
+            if fallback:
+                alias = fallback[0]
+    else:
+        matched = next((a for a in aliases if models.get(a, {}).get("actor") == actor), None)
+        if matched:
+            alias = matched
+        elif aliases:
+            alias = aliases[0]
+effort = eo or (aliases.get("effort") if isinstance(aliases, dict) else "medium")
 m = models.get(alias, {})
 cli_arg = m.get("cli_arg", alias)
 print(f"model={cli_arg}")
