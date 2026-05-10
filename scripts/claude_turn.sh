@@ -117,7 +117,28 @@ if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd"
   _args+=( --add-dir "$ROUNDTABLE_PROJECT_ROOT" )
 fi
 [[ -n "$model" ]] && _args+=( --model "$model" )
-[[ -f "$role_sys" ]] && _args+=( --append-system-prompt "$(cat "$role_sys")" )
+_sys_prompt=""
+if [[ -n "${ROUNDTABLE_MODEL_ALIAS:-}" ]]; then
+  _sys_prompt+=$(python3 - "${SKILL_DIR}/models.json" "$ROUNDTABLE_MODEL_ALIAS" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1])).get("models", {}).get(sys.argv[2])
+if m:
+    print("## Your Model Identity")
+    print(f"You are operating as **{sys.argv[2]}**.")
+    if m.get("underlying"): print(f"- Underlying: {m['underlying']}")
+    if m.get("capabilities"): print(f"- Capabilities: {m['capabilities']}")
+    if m.get("best_for"): print(f"- Best for: {', '.join(m['best_for'])}")
+    if m.get("pricing"): print(f"- Pricing: {m['pricing']}")
+    print()
+PY
+)
+fi
+if [[ -f "$role_sys" ]]; then
+  _sys_prompt+=$'
+
+'$(cat "$role_sys")
+fi
+[[ -n "$_sys_prompt" ]] && _args+=( --append-system-prompt "$_sys_prompt" )
 
 # Per-role tool surface — minimal disablement principle.
 # Reviewer-likes get write protection via --permission-mode plan; no allowlist.
