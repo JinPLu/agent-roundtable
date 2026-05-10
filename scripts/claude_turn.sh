@@ -97,6 +97,12 @@ fi
 hist="${thread_dir}/history/claude/${ts_c}"
 mkdir -p "$hist"
 
+# Exported for project-level hooks (templates/.claude/settings.json):
+# - PostToolUse(Write|Edit) appends events to $ROUNDTABLE_HIST_DIR/edits.log
+# - Stop writes the structured completion event to $ROUNDTABLE_HIST_DIR/stop.json
+# Outside of roundtable dispatch the hooks no-op silently.
+export ROUNDTABLE_HIST_DIR="$hist"
+
 _cwd="$repo_root"
 
 # Compose addendum from task / task-file.

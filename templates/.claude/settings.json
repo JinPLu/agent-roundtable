@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Project-level deny list for Claude Code when used by agent-roundtable. Copy this file to <project_root>/.claude/settings.json (skill: roundtable-setup). Once present, the turn scripts skip the inline --disallowedTools fallback.",
+  "_comment": "Project-level deny list + roundtable observability hooks for Claude Code. Copy this file to <project_root>/.claude/settings.json (skill: roundtable-setup). Once present, the turn scripts skip the inline --disallowedTools fallback. Hooks rely on $ROUNDTABLE_HIST_DIR being exported by claude_turn.sh; outside of roundtable dispatch they no-op silently.",
   "permissions": {
     "deny": [
       "Bash(git push:*)",
@@ -19,6 +19,29 @@
       "Read(**/credentials*)",
       "Read(**/*secret*)",
       "Read(**/*.pem)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$ROUNDTABLE_HIST_DIR\" ]; then mkdir -p \"$ROUNDTABLE_HIST_DIR\" && { cat; printf '\\n'; } >> \"$ROUNDTABLE_HIST_DIR/edits.log\" 2>/dev/null || true; else cat >/dev/null; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -n \"$ROUNDTABLE_HIST_DIR\" ]; then mkdir -p \"$ROUNDTABLE_HIST_DIR\" && cat > \"$ROUNDTABLE_HIST_DIR/stop.json\" 2>/dev/null || true; else cat >/dev/null; fi"
+          }
+        ]
+      }
     ]
   }
 }
