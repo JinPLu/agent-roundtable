@@ -4,6 +4,7 @@ __pycache__/
 .claude_env.local
 .codex_env.local
 models.json
+models.secrets.json
 
 # OS
 .DS_Store

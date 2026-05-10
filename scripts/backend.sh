@@ -208,15 +208,17 @@ for actor in ("codex", "claude"):
         continue
     ep = m.get("endpoint") or {}
     base, key = ep.get("base_url", ""), ep.get("api_key", "")
+    key_ref = ep.get("api_key_ref", "")
     cli = m.get("cli_arg", mid)
     if _is_placeholder(base) or _is_placeholder(key) or _is_placeholder(m.get("actor", "")):
         print(f"  {actor:<7}  ⚠  PLACEHOLDER    model={mid!r} still has REPLACE_WITH:* fields — fill them in")
         continue
-    if base and key:
+    has_key = bool(key or key_ref)
+    if base and has_key:
         print(f"  {actor:<7}  ✅ IMPORTED       model={mid!r}  cli_arg={cli!r}")
         print(f"           {'':<17}base_url={base}")
     else:
-        missing = [k for k, v in (("base_url", base), ("api_key", key)) if not v]
+        missing = [lbl for lbl, v in (("base_url", base), ("api_key/api_key_ref", has_key)) if not v]
         print(f"  {actor:<7}  ⚠  INCOMPLETE     model={mid!r} — endpoint missing: {','.join(missing) or 'whole block'}")
 
 # ── Catalog table ────────────────────────────────────────────────────────
@@ -236,9 +238,10 @@ else:
         else:
             ep = m.get("endpoint") or {}
             base, key = ep.get("base_url", ""), ep.get("api_key", "")
+            key_ref = ep.get("api_key_ref", "")
             if _is_placeholder(base) or _is_placeholder(key):
                 ep_status = "⚠ PLACEHOLDER (fill in)"
-            elif base and key:
+            elif base and (key or key_ref):
                 ep_status = "endpoint set"
             elif ep:
                 ep_status = "endpoint partial"
@@ -295,7 +298,8 @@ real = [
   k for k, m in (d.get('models') or {}).items()
   if not k.startswith('_')
   and isinstance(m, dict)
-  and (m.get('endpoint') or {}).get('api_key', '').strip()
+  and ((m.get('endpoint') or {}).get('api_key', '').strip()
+       or (m.get('endpoint') or {}).get('api_key_ref', '').strip())
   and not (m.get('endpoint') or {}).get('api_key', '').startswith('REPLACE_WITH')
 ]
 sys.exit(0 if not real else 1)
@@ -348,8 +352,30 @@ for actor in targets:
         print(f"WARN  {actor}: model {mid!r} is registered as actor={declared_actor!r}", file=sys.stderr)
     ep = m.get("endpoint") or {}
     base, key = ep.get("base_url", ""), ep.get("api_key", "")
+    key_ref = ep.get("api_key_ref", "")
     if base.startswith("REPLACE_WITH") or key.startswith("REPLACE_WITH"):
         print(f"SKIP {actor}: model {mid!r} endpoint still has REPLACE_WITH:* placeholder values.", file=sys.stderr); continue
+    if key_ref:
+        if not key_ref.startswith("secrets:"):
+            print(f"ERROR: api_key_ref={key_ref!r} is not a 'secrets:' reference", file=sys.stderr); sys.exit(2)
+        rest = key_ref[len("secrets:"):]
+        # Split from the RIGHT — model_ids may contain dots (e.g. gpt-5.5)
+        parts = rest.rsplit(".", 1)
+        if len(parts) != 2:
+            print(f"ERROR: api_key_ref={key_ref!r} malformed; expected 'secrets:<model_id>.<key>'", file=sys.stderr); sys.exit(2)
+        ref_model_id, ref_key_name = parts
+        secrets_path = pathlib.Path(mf).parent / "models.secrets.json"
+        if not secrets_path.exists():
+            print(f"ERROR: api_key_ref points to {key_ref!r} but models.secrets.json missing/incomplete. Run 'backend.sh init' or create models.secrets.json manually.", file=sys.stderr); sys.exit(2)
+        try:
+            secrets = json.loads(secrets_path.read_text())
+        except Exception as e:
+            print(f"ERROR: failed to parse models.secrets.json: {e}", file=sys.stderr); sys.exit(2)
+        key = (secrets.get(ref_model_id) or {}).get(ref_key_name, "")
+        if not key:
+            print(f"ERROR: api_key_ref points to {key_ref!r} but models.secrets.json missing/incomplete. Run 'backend.sh init' or create models.secrets.json manually.", file=sys.stderr); sys.exit(2)
+    elif key:
+        print(f"WARN [backend.sh]: endpoint.api_key in models.json is deprecated; move to models.secrets.json.", file=sys.stderr)
     if not base or not key:
         print(f"SKIP {actor}: model {mid!r} has no endpoint.base_url or api_key set", file=sys.stderr); continue
     cli_arg = m.get("cli_arg", mid)
