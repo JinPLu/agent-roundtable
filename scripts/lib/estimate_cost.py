@@ -173,17 +173,44 @@ _SNAPSHOT_DISAGREE_PCT = 10.0
 
 
 def _resolve_pricing(model: dict, source: str) -> tuple[float, float, list[str]]:
-    """Return (per_1m_input, per_1m_output, notes) honouring `source`.
+    """Return (effective_per_1m_input, per_1m_output, notes) honouring `source`.
 
     `source` is one of registry|snapshot|both. Cursor pool models always fall
     back to the registry (LiteLLM has no Cursor keys, and the project's only
     source of truth is `models.json`). The notes list is appended verbatim
     to the user-facing estimate output so the resolution path is auditable.
+
+    Cached input handling (audit P3.4): if registry has `per_1m_cached_input`
+    and the env var `ROUNDTABLE_CACHE_HIT_RATIO` is set (default: 0.0), the
+    effective input rate is blended:
+        eff = (1 - ratio) * per_1m_input + ratio * per_1m_cached_input
+    Set ROUNDTABLE_CACHE_HIT_RATIO=0.7 (typical agentic-loop hit rate) to
+    factor cache savings into estimates. The default 0.0 keeps behavior
+    backward-compatible (no cache discount applied).
     """
+    import os as _os
     notes: list[str] = []
     pricing = model.get("pricing") or {}
     reg_in = float(pricing.get("per_1m_input") or 0.0)
     reg_out = float(pricing.get("per_1m_output") or 0.0)
+    reg_cached_in = pricing.get("per_1m_cached_input")
+    cache_ratio_str = _os.environ.get("ROUNDTABLE_CACHE_HIT_RATIO", "")
+    cache_ratio = 0.0
+    if cache_ratio_str:
+        try:
+            cache_ratio = max(0.0, min(1.0, float(cache_ratio_str)))
+        except ValueError:
+            notes.append(
+                f"WARNING: ROUNDTABLE_CACHE_HIT_RATIO={cache_ratio_str!r} not a number; using 0."
+            )
+    if cache_ratio > 0 and reg_cached_in is not None and reg_in > 0:
+        cached_in = float(reg_cached_in)
+        eff_in = (1.0 - cache_ratio) * reg_in + cache_ratio * cached_in
+        notes.append(
+            f"Cache-blended input: {cache_ratio:.0%} hit rate × ${cached_in:.4f}/M "
+            f"+ {1.0 - cache_ratio:.0%} × ${reg_in:.4f}/M = ${eff_in:.4f}/M effective."
+        )
+        reg_in = eff_in
 
     if source == "registry":
         return reg_in, reg_out, notes
