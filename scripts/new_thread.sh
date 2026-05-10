@@ -20,8 +20,10 @@ Options:
   -h, --help            Print this help and exit.
 
 Environment:
-  ROUNDTABLE_REPO_ROOT  Repo root (default: auto-detected via git).
-  ROUNDTABLE_ROOT       Artifacts root (default: $ROUNDTABLE_REPO_ROOT/.roundtable).
+  ROUNDTABLE_PROJECT_ROOT  Project root (default: auto-detected via git).
+                           ROUNDTABLE_REPO_ROOT is a deprecated alias.
+  ROUNDTABLE_ROOT          Artifacts root (default:
+                           \$ROUNDTABLE_PROJECT_ROOT/.roundtable).
 
 Examples:
   new_thread.sh serve-review-audit "Audit concurrency bugs in the serve module."

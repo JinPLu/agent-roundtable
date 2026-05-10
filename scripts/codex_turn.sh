@@ -80,7 +80,7 @@ esac
 
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
-repo_root="$ROUNDTABLE_REPO_ROOT"
+repo_root="$ROUNDTABLE_PROJECT_ROOT"
 
 # Optional per-actor backend env override. No-op if `.codex_env.local` absent
 # (in which case codex uses ~/.codex/{settings,auth}.json as normal).

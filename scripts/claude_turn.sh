@@ -85,7 +85,7 @@ esac
 
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
-repo_root="$ROUNDTABLE_REPO_ROOT"
+repo_root="$ROUNDTABLE_PROJECT_ROOT"
 _role_sys_key="$role"
 [[ "$role" == "reviewer-aggregator" ]] && _role_sys_key="reviewer"
 # devils-advocate has its own system prompt; no alias needed

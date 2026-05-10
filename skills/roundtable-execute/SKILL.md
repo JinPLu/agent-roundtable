@@ -52,7 +52,7 @@ The executor turn itself does not prove scope compliance. After the turn finishe
 1. Fix a **comparison base** — e.g. the commit at thread start, or the SHA recorded when the plan was accepted (`<plan-base-sha>`). Document which base you use in the thread or `OPEN_QUESTIONS.md` if ambiguous.
 2. List touched paths:
 
-   `git -C <ROUNDTABLE_REPO_ROOT> diff --name-only <plan-base-sha>..HEAD`
+   `git -C <ROUNDTABLE_PROJECT_ROOT> diff --name-only <plan-base-sha>..HEAD`
 
 3. Parse **In-scope paths** from `GOAL.md` (prefixes or glob patterns as written there). Any changed path that does **not** fall under an in-scope rule is a **scope violation candidate** (also cross-check **Out-of-scope**).
 
