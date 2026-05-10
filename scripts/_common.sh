@@ -38,9 +38,14 @@ fi
 unset _rt_skill_dir
 export ROUNDTABLE_PROJECT_ROOT
 
-# Legacy alias — keep ROUNDTABLE_REPO_ROOT pointing at the same dir for any
-# downstream code that still reads it.
-export ROUNDTABLE_REPO_ROOT="${ROUNDTABLE_REPO_ROOT:-$ROUNDTABLE_PROJECT_ROOT}"
+# Legacy alias retained for backward compat with old user shell scripts /
+# external tools that still read $ROUNDTABLE_REPO_ROOT. Internal reads have
+# all migrated to $ROUNDTABLE_PROJECT_ROOT (audit P3.1 2026-05-11).
+# Slated for removal: 2026-08 (notify users via WARN if they EXPORT it).
+if [[ -n "${ROUNDTABLE_REPO_ROOT:-}" && "$ROUNDTABLE_REPO_ROOT" != "$ROUNDTABLE_PROJECT_ROOT" ]]; then
+  echo "WARN [_common.sh]: ROUNDTABLE_REPO_ROOT is deprecated; use ROUNDTABLE_PROJECT_ROOT (was: $ROUNDTABLE_REPO_ROOT, now: $ROUNDTABLE_PROJECT_ROOT)" >&2
+fi
+export ROUNDTABLE_REPO_ROOT="$ROUNDTABLE_PROJECT_ROOT"
 
 ROUNDTABLE_ROOT="${ROUNDTABLE_ROOT:-${ROUNDTABLE_PROJECT_ROOT}/.roundtable}"
 export ROUNDTABLE_ROOT
@@ -105,7 +110,7 @@ safe_repo_git() {
   if ! command -v timeout >/dev/null 2>&1; then
     return 0
   fi
-  timeout 3 git -C "$ROUNDTABLE_REPO_ROOT" --no-optional-locks "$@" 2>/dev/null || true
+  timeout 3 git -C "$ROUNDTABLE_PROJECT_ROOT" --no-optional-locks "$@" 2>/dev/null || true
 }
 
 # ── idle_watchdog ────────────────────────────────────────────────────────────
@@ -416,7 +421,7 @@ resolve_model() {
     return
   fi
   python3 - "$registry" "$actor" "$role" "$model_override" "$effort_override" <<'PY'
-import json, sys
+import json, shlex, sys
 reg=json.load(open(sys.argv[1]))
 actor, role = sys.argv[2], sys.argv[3]
 mo, eo = sys.argv[4], sys.argv[5]
@@ -439,9 +444,14 @@ if not alias:
 effort = eo or (aliases.get("effort") if isinstance(aliases, dict) else "medium")
 m = models.get(alias, {})
 cli_arg = m.get("cli_arg", alias)
-print(f"model={cli_arg}")
-print(f"effort={effort}")
-print(f"ROUNDTABLE_MODEL_ALIAS={alias}")
+# Output is consumed by `eval $(resolve_model ...)` in turn scripts. shlex.quote
+# every value so a malicious or typo'd cli_arg / alias containing shell
+# metacharacters (e.g. `gpt-5"; rm -rf /; "`) cannot be executed. Audit P2.2
+# 2026-05-11: prior implementation used unquoted assignments and was a code-
+# injection sink reachable via user-edited models.json entries.
+print(f"model={shlex.quote(str(cli_arg or ''))}")
+print(f"effort={shlex.quote(str(effort or ''))}")
+print(f"ROUNDTABLE_MODEL_ALIAS={shlex.quote(str(alias or ''))}")
 PY
 }
 
@@ -455,7 +465,7 @@ write_meta() {
   if [[ $# -gt 0 ]]; then shift; fi
   local warnings=("$@")
   local diff_stat
-  diff_stat=$(cd "$ROUNDTABLE_REPO_ROOT" && git diff --stat 2>/dev/null | tail -1 || echo "")
+  diff_stat=$(cd "$ROUNDTABLE_PROJECT_ROOT" && git diff --stat 2>/dev/null | tail -1 || echo "")
   python3 - "$path" "$actor" "$model" "$effort" "$role" "$sandbox" "$exit_code" "$dur" "$hist" "$diff_stat" "$(iso_now)" "$backend_env" "${warnings[@]}" <<'PY'
 import json
 import pathlib
@@ -510,7 +520,7 @@ emit_done() {
 # Args: thread_dir name
 ensure_worktree() {
   local thread_dir="$1" name="$2"
-  local repo="$ROUNDTABLE_REPO_ROOT"
+  local repo="$ROUNDTABLE_PROJECT_ROOT"
   local wt="${thread_dir}/worktrees/${name}"
   if [[ -d "$wt" ]]; then echo "$wt"; return; fi
   mkdir -p "${thread_dir}/worktrees"
