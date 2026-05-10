@@ -67,7 +67,15 @@ if [[ -z "$model" ]]; then
   eval "$( resolve_model codex "$role" "" "$effort" )"
 fi
 
-sandbox="workspace-write"  # CWD determines the actual write boundary
+# Sandbox per role: read roles get vendor-enforced read-only (parity with
+# Claude's --permission-mode plan); only executor needs workspace-write.
+# Planner / reviewer artifact text comes back via -o / trace.jsonl and the
+# parent script (or P2.1 capture) writes it under artifacts/ — the model
+# itself does not need write access to do its job.
+case "$role" in
+  reviewer|reviewer-aggregator|devils-advocate|planner|discussant) sandbox="read-only" ;;
+  *) sandbox="workspace-write" ;;
+esac
 
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
