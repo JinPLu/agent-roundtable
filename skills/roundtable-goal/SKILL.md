@@ -101,6 +101,8 @@ $SKILL/scripts/claude_turn.sh <slug> --role reviewer-aggregator \
 
 ### Phase 5: evaluate stop condition
 
+Before starting a new round, run `python3 scripts/lib/check_budget.py <thread_dir>` to verify the budget cap has not been reached *(Hard Rule #8)*.
+
 Read **`verdict.json`**:
 
 - **Stop and report success** if `blocking_issues` has 0 BLOCKERs **and** acceptance shows ≤1 PARTIAL/MISSING/VERIFICATION-NOT-EVIDENCED **and** `convergence_status` is `converged` or `progressing → accept-and-stop`.

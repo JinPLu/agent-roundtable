@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Roundtable Execute
 
+> The chat parent orchestrates; this sub-skill never auto-dispatches (see root [SKILL.md](../../SKILL.md)).
+
 **Single-executor** implementation. One `executor` turn (or a short sequence of executor turns) carries out `GOAL.md` and/or `artifacts/PLAN.md` in the project working tree. When the work is done, the **orchestrating parent** (not the model) runs a **scope check** and surfaces any out-of-scope paths before you merge or hand off to review.
 
 > **Advanced:** N parallel executors on isolated worktrees with an aggregator pick-winner is an **opt-in pattern** — see [../../docs/advanced.md#n-parallel-executors-race--opt-in](../../docs/advanced.md#n-parallel-executors-race--opt-in).
@@ -28,7 +30,7 @@ disable-model-invocation: true
 
 ### Phase 0: confirm dispatch
 
-Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the root `SKILL.md`. `Multi?` is **single executor** unless you explicitly opt into the advanced race pattern.
+Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the root `SKILL.md` *(Hard Rule #7 — generate via `print_dispatch_block.py`)*. `Multi?` is **single executor** unless you explicitly opt into the advanced race pattern.
 
 ### Phase 1: implement
 

@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Roundtable Plan
 
+> The chat parent orchestrates; this sub-skill never auto-dispatches (see root [SKILL.md](../../SKILL.md)).
+
 Use when the user wants cross-vendor perspectives before committing to code **or** when they need an option matrix and trade-offs first (the former `roundtable-discuss` flow is **Phase A only**).
 
 Planning is split into **Phase A** (research / divergence → `artifacts/options.md`) and **Phase B** (synthesis / convergence → `artifacts/PLAN.md`). The chat parent decides whether to run both phases in one session or stop for a human checkpoint after Phase A.
