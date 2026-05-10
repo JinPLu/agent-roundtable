@@ -76,5 +76,5 @@ render "${SKILL_DIR}/templates/OPEN_QUESTIONS.md.tmpl"  "${dir}/OPEN_QUESTIONS.m
 ln -sfn "${dir}" "${THREADS_ROOT}/latest"
 
 echo "thread_dir=${dir}"
-echo "Edit GOAL.md (scope / DoD / Plan source). Import a Cursor plan: bash scripts/import_plan.sh ${slug} /path/to/plan.md"
-echo "Dispatch only after GOAL.md is ready."
+echo "Tip: for plan-bound flows you can skip this step — bash scripts/import_plan.sh /path/to/plan.md auto-creates a thread."
+echo "Edit GOAL.md (scope / DoD / Plan source). Dispatch only after GOAL.md is ready."

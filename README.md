@@ -35,9 +35,10 @@ git clone … ~/.cursor/skills/agent-roundtable
 ```text
 你做     : 在 Cursor Plan 模式写好 ~/.cursor/plans/foo.plan.md
 
-你说     : 起 thread "foo-20260511" 并导入这个 plan
-Cursor做 : new_thread.sh foo-20260511 "<one-line>"
-           import_plan.sh foo-20260511 ~/.cursor/plans/foo.plan.md
+你说     : 导入这个 plan
+Cursor做 : import_plan.sh ~/.cursor/plans/foo.plan.md
+           → 自动派生 slug (foo-20260511) + 一句话 goal (从 plan frontmatter 或 H1)
+           → 不存在则自动 new_thread.sh
            → artifacts/PLAN.md (含 import 元数据)
            → GOAL.md ## Plan source 段写入源路径 / 时间
 
@@ -108,8 +109,8 @@ Cursor做 : 让你确认 acceptance criteria → 写进 GOAL.md
 | 脚本 | 用途 |
 |---|---|
 | `backend.sh` | `init` / `apply` / `show` model registry + API key |
-| `new_thread.sh <slug> "<goal>"` | 建 thread 目录 + GOAL.md 模板 |
-| `import_plan.sh <slug> <plan-path> [--reviewed yes\|no]` | Cursor plan → `artifacts/PLAN.md` + 同步 `GOAL.md` |
+| `new_thread.sh <slug> "<goal>"` | 建 thread 目录 + GOAL.md 模板（多数时候不用手跑，`import_plan.sh` 会代劳） |
+| `import_plan.sh <plan-path> [--slug X] [--reviewed yes\|no]` | Cursor plan → `artifacts/PLAN.md` + 同步 `GOAL.md`；thread 不存在自动建 |
 | `codex_turn.sh` / `claude_turn.sh` | 跑一个 turn（agent 调用，不用你自己输） |
 | `route.sh --role <r> -m <m> --estimate` | 选 actor / 估价 |
 

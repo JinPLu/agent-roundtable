@@ -184,7 +184,7 @@ If no thread exists yet this step is skipped — the cache will be written on th
 
 After setup succeeds, point the user at the next sub-skill that matches their actual goal:
 
-- "Run `import_plan.sh <slug> /path/to/plan.md` if execution should follow a Cursor plan, then `roundtable-execute`."
+- "Run `import_plan.sh /path/to/plan.md` if execution should follow a Cursor plan (auto-creates a thread with the right slug), then `roundtable-execute`."
 - "Now you can run `roundtable-plan` to research options or build an executable PLAN.md."
 - "Now you can run `roundtable-review` for a cross-vendor review."
 - "Now you can run `roundtable-execute` to implement PLAN.md with a single executor (advanced N-parallel race in docs/advanced.md)."

@@ -38,7 +38,11 @@ Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the 
    If the user’s plan is a Cursor file (`~/.cursor/plans/*.plan.md` or similar) or any path outside `<thread>/artifacts/`, run **`import_plan.sh`** *before* dispatch so **`artifacts/PLAN.md`** is a byte-accurate copy and `GOAL.md` **Plan source** lists the **Original source path** and **Last imported at**:
 
    ```bash
-   bash $SKILL/scripts/import_plan.sh <slug> /absolute/path/to/plan.md [--reviewed yes|no|N/A]
+   # Single arg — slug auto-derived (filename + YYYYMMDD), thread auto-created
+   bash $SKILL/scripts/import_plan.sh /absolute/path/to/plan.md [--reviewed yes|no|N/A]
+
+   # Override slug when re-importing into an existing thread
+   bash $SKILL/scripts/import_plan.sh /absolute/path/to/plan.md --slug <slug> --reviewed yes
    ```
 
    If you already edited `artifacts/PLAN.md` in-repo and that is the only source of truth, ensure **Original source path** in `GOAL.md` says `in-thread only` and **Last imported at** is accurate or `N/A`.

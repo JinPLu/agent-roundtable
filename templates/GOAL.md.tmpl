@@ -16,7 +16,10 @@ Bind an executable plan to this thread so the **executor** reads **`artifacts/PL
 To copy a Cursor plan into the thread (updates this section and refreshes `artifacts/PLAN.md`):
 
 ```bash
-bash $SKILL/scripts/import_plan.sh {{SLUG}} /absolute/path/to/plan.md --reviewed no
+# Auto-derive slug + auto-create thread:
+bash $SKILL/scripts/import_plan.sh /absolute/path/to/plan.md [--reviewed yes|no|N/A]
+# Re-import into this existing thread:
+bash $SKILL/scripts/import_plan.sh /absolute/path/to/plan.md --slug {{SLUG}} --reviewed yes
 ```
 
 If `artifacts/PLAN.md` was produced only by **`roundtable-plan`** Phase B, set **Original source path** to `roundtable-plan Phase B` and leave **Last imported at** as `N/A`.
