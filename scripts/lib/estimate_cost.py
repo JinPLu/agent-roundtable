@@ -86,6 +86,13 @@ def _default_registry() -> pathlib.Path:
 # turns without project context are 5-10x smaller; do not use this table for
 # them. See AGENT_LOOPS-2026-05-10.md §3 for the source data.
 ROLE_TOKEN_BUDGETS: dict[str, dict[str, int]] = {
+    # Role → role_defaults group mapping:
+    #   triage, compactor         → lightweight; use executor-fast shape
+    #   executor, executor-fast   → standard execution
+    #   executor-heavy            → deep refactors; 1.3x executor
+    #   planner, discussant       → planning/discussion
+    #   researcher, researcher-deep → research
+    #   reviewer, devils-advocate, reviewer-aggregator → review
     "planner":             {"input": 50_000,  "output_chat": 4_000,  "output_thinking": 15_000},
     "executor":            {"input": 80_000,  "output_chat": 8_000,  "output_thinking": 25_000},
     # executor-fast: mechanical edits, smaller context window read, smaller emit.
@@ -103,6 +110,12 @@ ROLE_TOKEN_BUDGETS: dict[str, dict[str, int]] = {
     "devils-advocate":     {"input": 60_000,  "output_chat": 3_000,  "output_thinking": 12_000},
     "reviewer-aggregator": {"input": 30_000,  "output_chat": 2_000,  "output_thinking": 8_000},
     "discussant":          {"input": 30_000,  "output_chat": 5_000,  "output_thinking": 12_000},
+    # NOTE 2026-05-11: triage and compactor are lightweight dispatch roles (thread
+    # management, format checks). Use executor-fast shape as a conservative upper bound.
+    "triage":    {"input": 40_000,  "output_chat": 2_000,  "output_thinking": 5_000},
+    "compactor": {"input": 40_000,  "output_chat": 2_000,  "output_thinking": 5_000},
+    # NOTE 2026-05-11: executor-heavy is for deep refactors. 1.3x executor shape.
+    "executor-heavy": {"input": 104_000, "output_chat": 10_400, "output_thinking": 32_500},
 }
 
 # Effort multipliers stack on top of the role bucket. "high" disproportionately

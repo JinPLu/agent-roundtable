@@ -16,8 +16,10 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import sys as _sys
 
-_DEPRECATED_PRICING_KEYS = frozenset({"_official_before_discount", "_pretax_reference"})
+_sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from constants import DEPRECATED_PRICING_KEYS as _DEPRECATED_PRICING_KEYS  # noqa: E402
 
 
 def _filtered_pricing(pricing: dict) -> dict:
@@ -47,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"You are operating as **{args.model}**.")
     if m.get("underlying"):
         print(f"- Underlying: {m['underlying']}")
-    if m.get("capabilities"):
-        print(f"- Capabilities: {m['capabilities']}")
+    if m.get("benchmarks"):
+        print(f"- Benchmarks: {m['benchmarks']}")
     if m.get("best_for"):
         print(f"- Best for: {', '.join(m['best_for'])}")
     pricing = m.get("pricing")
