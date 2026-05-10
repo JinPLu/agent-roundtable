@@ -189,19 +189,14 @@ case "$role" in
     ;;
 esac
 
-# Reviewer-likes: ask claude to vendor-validate the verdict against the JSON
-# schema (--json-schema takes the schema content, not a file path).
-# extract_json_verdict still runs as a regex fallback for defence in depth.
-case "$role" in
-  reviewer|reviewer-aggregator|devils-advocate)
-    _schema="${SKILL_DIR}/roles/reviewer.schema.json"
-    if [[ -f "$_schema" ]] && python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$_schema" >/dev/null 2>&1; then
-      _args+=( --json-schema "$(cat "$_schema")" )
-    else
-      echo "WARN [claude_turn.sh]: reviewer.schema.json missing or invalid JSON; skipping --json-schema." >&2
-    fi
-    ;;
-esac
+# Reviewer-likes: do NOT pass --json-schema to claude. Vendor StructuredOutput
+# tool routes the verdict into the result-blob's `structured_output` field
+# while `result` becomes a short post-message — the 5-part prose body never
+# reaches last.md via extract_claude_result. The role system prompt instructs
+# claude to embed a fenced ```json verdict block inside the Verification
+# section; extract_json_verdict (regex-based) reads it back into verdict.json
+# post-turn. Schema in roles/reviewer.schema.json remains the documentation
+# contract and is validated post-hoc by tooling that wants strict checks.
 
 _start=$(date +%s)
 set +e

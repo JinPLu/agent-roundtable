@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "roundtable-reviewer-verdict",
   "title": "Reviewer Verdict",
-  "description": "Machine-readable verdict block produced by a reviewer turn. Must be embedded as a fenced ```json block in the Verification section of the five-part turn body. All properties are required by OpenAI strict response_format; fields not relevant to the current mode MUST be emitted as null. convergence_status/next_action_hint/evidence_delta_vs_prior_round/evidence_delta_notes: convergence-loop mode only (emit null otherwise). scope_violation/dissenting_concerns: reviewer-aggregator mode only (emit null otherwise).",
+  "description": "Machine-readable verdict block produced by a reviewer turn. Must be embedded as a fenced ```json block in the Verification section of the five-part turn body. The three convergence_* fields are OPTIONAL (convergence-loop mode only). The dissenting_concerns array is OPTIONAL (reviewer-aggregator mode only).",
   "type": "object",
-  "required": ["acceptance", "scope", "blocking_issues", "convergence_status", "next_action_hint", "evidence_delta_vs_prior_round", "evidence_delta_notes", "scope_violation", "dissenting_concerns"],
+  "required": ["acceptance", "scope", "blocking_issues"],
   "additionalProperties": false,
   "properties": {
     "acceptance": {
@@ -76,28 +76,28 @@
       }
     },
     "convergence_status": {
-      "type": ["string", "null"],
-      "enum": ["converged", "progressing", "stalled", "regressed", "unknown", null],
-      "description": "Convergence-loop mode only; emit null in one-shot reviewer and reviewer-aggregator modes. Reviewer's verdict on whether this round made measurable progress toward the goal versus the prior round."
+      "type": "string",
+      "enum": ["converged", "progressing", "stalled", "regressed", "unknown"],
+      "description": "Convergence-loop mode only. Reviewer's verdict on whether this round made measurable progress toward the goal versus the prior round."
     },
     "next_action_hint": {
-      "type": ["string", "null"],
+      "type": "string",
       "maxLength": 500,
-      "description": "Convergence-loop mode only; emit null otherwise. Short directive to the parent loop controller, e.g. 'executor-rerun', 'planner-revise', 'switch-model', 'branch', 'escalate-to-user', 'accept-and-stop'."
+      "description": "Convergence-loop mode only. Short directive to the parent loop controller, e.g. 'executor-rerun', 'planner-revise', 'switch-model', 'branch', 'escalate-to-user', 'accept-and-stop'."
     },
     "evidence_delta_vs_prior_round": {
-      "type": ["string", "null"],
-      "enum": ["new", "partial", "none", "n/a-first-round", null],
-      "description": "Convergence-loop mode only; emit null otherwise. Discrete classification of how this round's evidence differs from the prior round's reviewer verdict. 'new' = materially fresh evidence (artifact / failure shape / metric); 'partial' = some movement but key gaps unchanged; 'none' = no new evidence at all (loop-controller fast-fail signal — see roundtable-goal Phase 5); 'n/a-first-round' = no prior round to compare against. Use evidence_delta_notes for free-form context."
+      "type": "string",
+      "enum": ["new", "partial", "none", "n/a-first-round"],
+      "description": "Convergence-loop mode only. Discrete classification of how this round's evidence differs from the prior round's reviewer verdict. 'new' = materially fresh evidence (artifact / failure shape / metric); 'partial' = some movement but key gaps unchanged; 'none' = no new evidence at all (loop-controller fast-fail signal — see roundtable-goal Phase 5); 'n/a-first-round' = no prior round to compare against. Use evidence_delta_notes for free-form context."
     },
     "evidence_delta_notes": {
-      "type": ["string", "null"],
+      "type": "string",
       "maxLength": 4000,
-      "description": "Convergence-loop mode only; emit null otherwise. Free-form one-paragraph note describing what specifically changed (or did not) versus the prior round's verdict."
+      "description": "Convergence-loop mode only. Optional free-form one-paragraph note describing what specifically changed (or did not) versus the prior round's verdict."
     },
     "scope_violation": {
-      "type": ["object", "null"],
-      "description": "Reviewer-aggregator mode only; emit null in reviewer and devils-advocate modes. Result of comparing executor-touched paths against GOAL.md 'In-scope paths'. When detected == true the aggregator's verdict MUST be 'revise' regardless of other signals.",
+      "type": "object",
+      "description": "Reviewer-aggregator mode only. Result of comparing executor-touched paths against GOAL.md 'In-scope paths'. When detected == true the aggregator's verdict MUST be 'revise' regardless of other signals.",
       "required": ["detected", "paths", "notes"],
       "additionalProperties": false,
       "properties": {
@@ -117,8 +117,8 @@
       }
     },
     "dissenting_concerns": {
-      "type": ["array", "null"],
-      "description": "Reviewer-aggregator mode only; emit null in reviewer and devils-advocate modes. Minority dissent that the aggregator disagrees with but preserves for the record. Each entry cites which reviewer raised it and why the aggregator did not promote it to blocking_issues.",
+      "type": "array",
+      "description": "Reviewer-aggregator mode only. Minority dissent that the aggregator disagrees with but preserves for the record. Each entry cites which reviewer raised it and why the aggregator did not promote it to blocking_issues.",
       "items": {
         "type": "object",
         "required": ["source_reviewer", "concern", "aggregator_rationale"],
