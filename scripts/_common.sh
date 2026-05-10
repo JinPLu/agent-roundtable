@@ -262,7 +262,15 @@ build_prompt() {
     fi
 
     # ── 5. EARLIER HISTORY (rolling summary, only if file exists) ───────────
-    if [[ -f "${thread_dir}/THREAD_SUMMARY.md" ]]; then
+    # Blind mode (ROUNDTABLE_SKIP_LATEST_VERDICT=1) suppresses this section
+    # wholesale: THREAD_SUMMARY.md is produced by compact_thread.sh which
+    # does NOT strip embedded ```json verdict blocks, so a blind reviewer
+    # could otherwise still see prior verdicts copied into the rolling
+    # summary. Lower-risk option vs adding a JSON-stripper to the
+    # compactor; the trade-off is that blind reviewers also lose any
+    # non-verdict earlier-history context in this section, which matches
+    # the existing pattern of fully suppressing section 7 under blind.
+    if [[ -f "${thread_dir}/THREAD_SUMMARY.md" && "${ROUNDTABLE_SKIP_LATEST_VERDICT:-0}" != "1" ]]; then
       printf '## Earlier history (mechanically compacted — Read fields stripped, Verification truncated)\n'
       printf 'If you need exact details from old turns, read `%s/THREAD.md` directly.\n\n' "$thread_dir"
       cat "${thread_dir}/THREAD_SUMMARY.md"
