@@ -41,7 +41,7 @@ def check_diversity(thread_dir: pathlib.Path, *, n: int = 2) -> tuple[bool, str]
     if len(set(families)) < 2:
         return False, (
             f"WARN: Same-vendor reviewers detected: {actors} (both {families[0]}). "
-            f"Cross-vendor blind review is required (Hard Rule #6). "
+            f"Cross-vendor blind review is required (Hard Rule #4). "
             f"Re-dispatch at least one reviewer from a different actor family."
         )
     return True, f"Diversity OK: {dict(zip(actors, families))}"

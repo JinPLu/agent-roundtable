@@ -9,9 +9,9 @@
 
 | Actor | Best at | Watch out for |
 |-------|---------|---------------|
-| **Codex CLI** (`codex`) | Repo-grounded execution; structured JSONL trace; goal bridge (`get_goal` / `create_goal` / `update_goal`) built-ins | Default timeout 1800s may cut very long reasoning chains; final message **must be only** the five-part turn body |
-| **Claude CLI** (`claude`) | Careful review with constrained tools; `plan` permission mode for read-only reviewer roles; `--bare` for isolation | Default timeout 1500s; Anthropic-compat shims (e.g. DeepSeek) can have long tail latency; tool allowlist may block a legitimate read-only command |
-| **Cursor subagent** (`cursor-subagent`) | Any Cursor-billed model (Gemini, Sonnet, Opus, Composer); highest SWE-bench scores available; good aggregator | No timeout cap in skill; Cursor task queue latency unbounded; prompts must be **fully self-contained** (no shared chat history) |
+| **Codex CLI** (`codex`, aliases `codex-cli-*`) | Repo-grounded execution; structured JSONL trace; goal bridge (`get_goal` / `create_goal` / `update_goal`) built-ins | Default timeout 1800s may cut very long reasoning chains; final message **must be only** the five-part turn body |
+| **Claude Code CLI** (`claude`, aliases `claude-code-cli-*`) | Careful review with constrained tools; `plan` permission mode for read-only reviewer roles; `--bare` for isolation | Default timeout 1500s; Anthropic-compat shims (e.g. DeepSeek) can have long tail latency; tool allowlist may block a legitimate read-only command |
+| **Cursor subagent** (`cursor-subagent`, aliases `cursor-*`) | Any Cursor-billed model (Gemini, Sonnet, Opus, Composer); highest SWE-bench scores available; good aggregator | No timeout cap in skill; Cursor task queue latency unbounded; prompts must be **fully self-contained** (no shared chat history) |
 
 ---
 
@@ -22,14 +22,16 @@ BYOK aliases — the registry is the source of truth, this table is illustrative
 
 | Alias | Actor | Underlying | Context | Best for |
 |-------|-------|-----------|---------|---------|
-| `gpt-5.5` | codex | OpenAI GPT-5.5 (Apr 2026) | 1M tok | Codex-side executor / planner |
-| `gpt-5.3-codex` | codex | OpenAI GPT-5.3-Codex (Feb 2026) | 400K tok | Cheaper Codex executor; terminal-heavy tasks |
-| `claude-4.7-opus` | claude | Anthropic Claude Opus 4.7 (Apr 2026) | 1M tok | Highest-rigor reviewer (SWE-Pro leader) |
-| `claude-4.6-sonnet` | claude | Anthropic Claude Sonnet 4.6 (Feb 2026) | 1M tok | Balanced executor / discussant |
+| `codex-cli-gpt-5.5` | codex | OpenAI GPT-5.5 (Apr 2026) | 1M tok | Codex-side executor / planner |
+| `codex-cli-gpt-5.3-codex` | codex | OpenAI GPT-5.3-Codex (Feb 2026) | 400K tok | Cheaper Codex executor; terminal-heavy tasks |
+| `claude-code-cli-opus` | claude | Anthropic Claude Opus 4.7 (Apr 2026) | 1M tok | Highest-rigor reviewer (SWE-Pro leader) |
+| `claude-code-cli-sonnet` | claude | Anthropic Claude Sonnet 4.6 (Feb 2026) | 1M tok | Balanced executor / discussant |
 | `cursor-composer-2` | cursor-subagent | Cursor Composer 2 | 200K tok | Cheap parallel executor; doc/code fan-out |
 | `cursor-claude-4.7-opus` | cursor-subagent | Claude Opus 4.7 (thinking-high) | 1M tok | Reviewer-aggregator; hardest reviewer |
 | `cursor-claude-4.6-sonnet` | cursor-subagent | Claude Sonnet 4.6 (thinking-medium) | 1M tok | Reviewer; executor-heavy |
 | `cursor-gemini-3.1-pro` | cursor-subagent | Gemini 3.1 Pro | 1M tok | Cross-vendor third opinion; ARC-AGI / scientific QA |
+
+> The alias prefix encodes the route: `codex-cli-*` → Codex CLI (`codex_turn.sh`), `claude-code-cli-*` → Claude Code CLI (`claude_turn.sh`), `cursor-*` → Cursor subagent (`Task` in IDE). Two aliases for the same underlying vendor model on different routes carry different prices and proxies — never collapse them in conversation.
 
 Speak in alias *categories* when writing prompts — "your Codex executor alias", "your
 reviewer-aggregator alias" — and let the registry resolve to a concrete name.
@@ -55,9 +57,14 @@ without a proxy.  Cursor billing uses a CN-specific subdomain.  As a result,
 all three roundtable actor families are reachable from within CN simultaneously
 — this is intentional, not accidental.
 
-### Failover (future work)
+### Failover
 
-Automatic failover across models on rate-limit, timeout, or stall is not yet implemented. The design intent (walking `fallback_chain` entries in `models.json` with user consent before first hop) is tracked as future work. For now, handle failures manually: inspect the turn output, pick an alternate model, and re-dispatch.
+Two regimes are documented in root SKILL.md "Mechanics":
+
+- **Standalone turns** (`/roundtable-execute`, `/roundtable-review`, ad-hoc `claude_turn.sh`): when a route fails (HTTP 5xx, vendor 502, timeout), the chat parent MUST AskQuestion(retry / fallback / cancel) and re-paste the Dispatch Confirmation for the alternate route — silent fallback hides cost / quality changes.
+- **`/roundtable-goal` loop**: in-loop fallback is automatic — a single CLI reviewer 5xx → that reviewer swaps to the corresponding `cursor-*` route without re-confirming, cross-vendor invariant preserved. See `skills/roundtable-goal/SKILL.md` §"Autonomy contract".
+
+Walking a full `fallback_chain` chain across multiple hops is still future work; current support is one-hop CLI→Cursor or vice versa.
 
 ---
 

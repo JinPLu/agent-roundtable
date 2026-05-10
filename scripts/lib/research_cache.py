@@ -3,7 +3,7 @@
 
 Wraps check_pricing_freshness.check_freshness() and caches the result so the
 parent agent does not repeat the freshness check on every dispatch within the
-same thread (Hard Rule #1 efficiency improvement).
+same thread (Hard Rule #3 efficiency improvement).
 
 Cache invalidation:
   - Cache file is older than CACHE_TTL_HOURS (default 24h), OR

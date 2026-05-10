@@ -8,11 +8,13 @@ The chat parent MUST run `route.sh ... --estimate` (or `scripts/lib/estimate_cos
 
 Sub-skills cite this block by name. Do not duplicate it elsewhere.
 
-## Generating the Dispatch Confirmation block (Hard Rule #6)
+## Generating the Dispatch Confirmation block (Hard Rule #2)
 
-The chat parent MUST invoke `python3 scripts/print_dispatch_block.py --model <id> --role <role> [--effort <e>] [--thread <slug>] [--project <path>]` and paste its stdout verbatim into the Dispatch Confirmation. The script reads `models.json` directly, delegates pricing/estimate to `route.py`, and explicitly excludes deprecated foot-gun keys (`_official_before_discount` / `_pretax_reference`). Do NOT compose the block by hand; the chat parent has misquoted pricing twice in this skill's history when allowed to "remember" the registry.
+The chat parent MUST invoke `python3 scripts/print_dispatch_block.py --model <alias> --role <role> [--effort <e>] [--thread <slug>] [--project <path>]` and paste its stdout verbatim into the Dispatch Confirmation. The script reads `models.json` directly, delegates pricing/estimate to `route.py`, and explicitly excludes deprecated foot-gun keys (`_official_before_discount` / `_pretax_reference`). Do NOT compose the block by hand; the chat parent has misquoted pricing twice in this skill's history when allowed to "remember" the registry.
 
-## Permission tiers by role (Hard Rule #5)
+The block now contains both `Alias` (key in `models.json`) and `Route` (Claude Code CLI vs Codex CLI vs Cursor subagent + base_url) so the two paths to the same vendor model can't be conflated — see root SKILL.md "Mechanics" → *Route disambiguation*.
+
+## Permission tiers by role (Mechanics, not a hard rule)
 
 Three permission tiers, vendor-enforced:
 

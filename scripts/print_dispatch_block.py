@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""print_dispatch_block.py - mechanical Hard Rule #6 enforcement.
+"""print_dispatch_block.py - mechanical Hard Rule #2 enforcement.
 
 Emit the canonical Dispatch Confirmation block by reading models.json directly
 + delegating pricing/estimate to scripts/lib/route.py. The chat parent is
@@ -119,7 +119,7 @@ def _route_estimate(role: str, alias: str, effort: str, turns: int) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="Emit the canonical Dispatch Confirmation block. "
-                    "Run by the chat parent and paste output verbatim per Hard Rule #6.",
+                    "Run by the chat parent and paste output verbatim per Hard Rule #2.",
     )
     p.add_argument("--model", required=True)
     p.add_argument("--role", required=True)

@@ -93,7 +93,7 @@ def apply_signals(rows, *, budget=None, latency=None, output_heavy=False, divers
         filtered.sort(key=_quality, reverse=True)
 
     # Diversity: keep at most one candidate per distinct actor family. This
-    # mechanises Hard Rule #7 — cross-vendor diversity is required for multi-reviewer
+    # mechanises Hard Rule #4 — cross-vendor diversity is required for multi-reviewer
     # rounds (same-actor reviewers exhibit sycophantic conformity, L4 / arXiv 2605.00914).
     if diversity:
         seen: set = set()
@@ -343,7 +343,7 @@ def main():
         default=False,
         help=(
             "Return at most one candidate per distinct actor family, enforcing "
-            "cross-vendor diversity (Hard Rule #7). Mechanises the requirement "
+            "cross-vendor diversity (Hard Rule #4). Mechanises the requirement "
             "that multi-reviewer rounds use agents from different vendors."
         ),
     )
