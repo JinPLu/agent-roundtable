@@ -43,6 +43,13 @@
     "codex": null,
     "claude": null
   },
+  "network_proxy": {
+    "_doc": "Optional HTTP proxy for codex/claude actor dispatches (smoke test, validate, codex_turn.sh, claude_turn.sh). cursor-subagent path is NOT affected — Cursor IDE manages its own network. See docs/network-proxy.md for full schema.",
+    "enabled": false,
+    "http_proxy":  "REPLACE_WITH:http://proxy-host:port",
+    "https_proxy": "REPLACE_WITH:http://proxy-host:port",
+    "no_proxy":    "localhost,127.0.0.1"
+  },
   "models": {
     "_template": {
       "_status": "Generic placeholder. Rename key (e.g. to `my-vllm-llama4`), pick actor=codex|claude, fill cli_arg + endpoint.base_url, then add api_key under the SAME key in models.secrets.json. Entries whose key starts with `_` are skipped by `apply`.",
