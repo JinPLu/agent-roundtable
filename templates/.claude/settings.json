@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "Project-level deny list for Claude Code when used by agent-roundtable. Copy this file to <project_root>/.claude/settings.json (skill: roundtable-setup). Once present, the turn scripts skip the inline --disallowedTools fallback.",
+  "permissions": {
+    "deny": [
+      "Bash(git push:*)",
+      "Bash(git push)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git reset --hard)",
+      "Bash(git rebase:*)",
+      "Bash(git rebase)",
+      "Bash(git filter-branch:*)",
+      "Bash(git update-ref:*)",
+      "Read(./.env*)",
+      "Read(./**/.env*)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(**/credentials*)",
+      "Read(**/*secret*)",
+      "Read(**/*.pem)"
+    ]
+  }
+}

@@ -163,12 +163,24 @@ fi
 
 # Per-role tool surface — minimal disablement principle.
 # Reviewer-likes + planner get write protection via --permission-mode plan; no allowlist.
-# Executor / discussant: only destructive git operations are blocked.
+# Executor / discussant: only destructive git operations + secret reads are blocked.
+#
+# Preferred path: <project>/.claude/settings.json carries the deny list (template
+# at $SKILL_DIR/templates/.claude/settings.json, copied by roundtable-setup).
+# When that file is present we skip the inline --disallowedTools fallback — the
+# settings file already covers the same surface and is project-level / source-
+# controllable. The inline list remains as a safety net for bare projects.
 _tools=()
+_proj_claude_settings="${_cwd}/.claude/settings.json"
 case "$role" in
   reviewer|reviewer-aggregator|devils-advocate|planner) : ;;
   *)
-    _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*)" );;
+    if [[ -f "$_proj_claude_settings" ]]; then
+      echo "INFO [claude_turn.sh]: project .claude/settings.json present; skipping inline --disallowedTools fallback." >&2
+    else
+      _tools+=( --disallowedTools "Bash(git push:*) Bash(git push) Bash(git push --force:*) Bash(git rebase:*) Bash(git rebase) Bash(git reset --hard:*) Bash(git reset --hard) Bash(git filter-branch:*) Bash(git update-ref:*) Read(./.env*) Read(./**/.env*) Read(~/.aws/**) Read(~/.ssh/**) Read(**/credentials*) Read(**/*secret*) Read(**/*.pem)" )
+    fi
+    ;;
 esac
 
 # Reviewer-likes: ask claude to vendor-validate the verdict against the JSON

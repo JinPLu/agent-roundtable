@@ -63,10 +63,24 @@ If `$ROUNDTABLE_PROJECT_ROOT/AGENTS.md` does not exist, offer to generate it. If
 
 Explain that subsequent dispatches will boot with full project awareness.
 
+### 4. Seed `.claude/settings.json` (only if missing)
+
+If `$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json` does not exist, copy the template:
+
+```bash
+mkdir -p "$ROUNDTABLE_PROJECT_ROOT/.claude"
+cp "$SKILL/templates/.claude/settings.json" "$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json"
+```
+
+The template denies destructive git operations (`git push`, `git reset --hard`, `git rebase`, `git filter-branch`, `git update-ref`) and reads of common secrets (`.env*`, `~/.aws/**`, `~/.ssh/**`, `credentials*`, `*secret*`, `*.pem`). With this file present, `claude_turn.sh` skips its inline `--disallowedTools` fallback in favour of project-level settings — same coverage, source-controllable, user-overridable.
+
+If the user already has a `.claude/settings.json`, **do not overwrite**. Diff the deny list and recommend additions if any of the above are missing.
+
 ## Stop when
 
 - `backend.sh show` reports the actor(s) the user needs as `ok`.
 - The project has `AGENTS.md` (and `CLAUDE.md` if the user uses Claude Code).
+- The project has `.claude/settings.json` with the agent-roundtable deny rules (or an explicit user-customised superset).
 - `ROUNDTABLE_PROJECT_ROOT` resolves to the user's project — never to the skill's own directory. The turn scripts emit a `WARN` if confused; act on it.
 
 ## Hand off
