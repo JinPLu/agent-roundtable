@@ -212,7 +212,7 @@
     },
     "cursor-claude-4.7-opus": {
       "actor": "cursor-subagent",
-      "cli_arg": "claude-opus-4-7-thinking-xhigh",
+      "cli_arg": "claude-opus-4-7-thinking-high",
       "provider": "anthropic-via-cursor",
       "underlying": "Anthropic Claude Opus 4.7 (Apr 16, 2026) via Cursor Task subagent (auth via Cursor IDE)",
       "context_window_k": 1000,

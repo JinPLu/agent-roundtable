@@ -395,7 +395,7 @@ that a single path would miss — the basis of ensemble methods in ML.
 - Each actor uses its own native reasoning mechanism: Codex CLI with
   `model_reasoning_effort` (`scripts/codex_turn.sh:145`); Claude Code with
   `--effort` (`scripts/claude_turn.sh:121`); Cursor subagent with model-native
-  thinking levels (e.g. `claude-opus-4-7-thinking-xhigh`).
+  thinking levels (e.g. `claude-opus-4-7-thinking-high`).
 - The `roles/reviewer.system.md` system prompt explicitly instructs independent
   verification ("Do NOT trust ANY other agent's claims") which forces each
   reviewer to derive its own reasoning chain from scratch.
