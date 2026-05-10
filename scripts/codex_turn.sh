@@ -189,6 +189,18 @@ if [[ ! -s "${hist}/last.md" && -s "${hist}/trace.jsonl" ]]; then
   fi
 fi
 
+# Planner under read-only sandbox cannot itself write artifacts/plan-*.md;
+# capture the extracted output into the thread artifacts dir for operators
+# (mirrors claude_turn.sh's plan-claude-<ts>.md path so Phase A can glob
+# `artifacts/plan-*-<ts>.md` across vendors).
+_plan_art=""
+if [[ "$role" == "planner" && "$sandbox" == "read-only" && -s "${hist}/last.md" ]]; then
+  mkdir -p "${thread_dir}/artifacts"
+  _plan_art="${thread_dir}/artifacts/plan-codex-${ts_c}.md"
+  cp "${hist}/last.md" "${_plan_art}"
+  echo "plan_artifact=${_plan_art}" >&2
+fi
+
 _ts=$(iso_now)
 _turn_n=""
 if [[ -s "${hist}/last.md" ]]; then

@@ -30,7 +30,10 @@ There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **paren
 
 1. **Create thread**: `new_thread.sh <slug> "<goal>"` (optional `QUESTION.md` for purely exploratory questions).
 2. **Confirm dispatch**: Show the root [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation). `Multi?` should list N parallel planners (e.g. codex + claude + cursor-subagent). Use `route.sh --role planner --diversity` for cross-vendor pairs.
-3. **Fan-out**: Dispatch N `planner` (or `discussant`) turns in parallel with tasks that require option matrices / plans written under `artifacts/` **without** mandating a final unified `PLAN.md` yet. For Claude planners, `claude_turn.sh` uses `--permission-mode plan` so the model cannot edit the repo; captured output is written to `artifacts/plan-claude-<ts>.md` by the parent script.
+3. **Fan-out**: Dispatch N `planner` (or `discussant`) turns in parallel with tasks that require option matrices / plans written under `artifacts/` **without** mandating a final unified `PLAN.md` yet. All three planner backends are now write-protected and the per-vendor plan body is captured into `artifacts/plan-<actor>-<ts>.md` by the dispatcher, so a single glob `artifacts/plan-*-<ts>.md` collects every fan-out for the synthesis step:
+   - **Claude**: `claude_turn.sh` uses `--permission-mode plan`; capture writes `artifacts/plan-claude-<ts>.md`.
+   - **Codex**: `codex_turn.sh` uses `--sandbox read-only` for planner role (P1.1); capture writes `artifacts/plan-codex-<ts>.md`.
+   - **Cursor subagent**: the chat parent (NOT a shell script) is responsible for the capture. After `Task(subagent_type=…, model=…)` returns, write the subagent's final 5-part body to `artifacts/plan-cursor-<ts>.md` *before* calling `append_turn.sh`. Use the same `<ts>` you pass to `--ts` for `append_turn.sh` so the artifact name lines up with the thread turn entry.
 4. **Synthesis (single actor)**: One high-capability turn merges `artifacts/options-*.md` / planner stubs into **`artifacts/options.md`**. Keep merge clerical: deduplicate, preserve dissent, attribute sources; **do not** smuggle a final “winner” if the user has not asked for Phase B yet.
 
 **Phase A alone** matches the old “discuss” intent: options and trade-offs, user decides.
