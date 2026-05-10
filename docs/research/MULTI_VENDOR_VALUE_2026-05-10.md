@@ -174,24 +174,26 @@ maintaining progress without human intervention.
 
 **How roundtable implements it today.**
 
-- `models.json:665-677`: `failover_policy` block is implemented but
-  **`enabled=false` by default**.  Opt-in requires:
+- `models.json:665-677`: `failover_policy` block is present in config but
+  **`enabled=false` by default**. The script-side implementation
+  (`_common.sh:dispatch_with_fallback`, `THREAD_LEDGER.md` hop logging) is
+  **not yet implemented** (future work — not yet implemented).  The config
+  schema reserves the opt-in flags:
   ```
   # In models.json:
   "failover_policy": { "enabled": true, … }
   # In your shell:
   export ROUNDTABLE_FAILOVER_OPT_IN=1
   ```
-  When enabled, `_common.sh:dispatch_with_fallback` walks `fallback_chain` on
-  `rate-limit`, `timeout-exceeded-budget`, or
-  `convergence-loop-stalled-2x` triggers
-  (`models.json:670-673`), logs each hop to
-  `<thread_dir>/THREAD_LEDGER.md`, and requires user consent before the first
-  failover in any thread (`models.json:676`).
-- Failover is **cross-family capable** but the default chains in `models.json`
-  are within-family; to get true cross-vendor redundancy, extend
-  `gpt-5.5.fallback_chain` to include `claude-opus` or
-  `cursor-claude-4.6-sonnet`.
+  When implemented, `_common.sh:dispatch_with_fallback` would walk
+  `fallback_chain` on `rate-limit`, `timeout-exceeded-budget`, or
+  `convergence-loop-stalled-2x` triggers, log each hop to
+  `<thread_dir>/THREAD_LEDGER.md`, and require user consent before the first
+  failover in any thread (future work — not yet implemented).
+- Cross-family failover is structurally possible once the above is implemented;
+  the default chains in `models.json` are within-family.  To prepare for
+  cross-vendor redundancy, extend `gpt-5.5.fallback_chain` to include
+  `claude-opus` or `cursor-claude-4.6-sonnet`.
 
 **Gap / recommendation.**  
 The capability exists but is undocumented in user-facing docs. Three actions:
@@ -539,7 +541,7 @@ reasoning weight and lower coding weight would produce better routing.
 | A | Anti-sycophancy / groupthink | **Complete** — `--blind` + cross-family hard rule + in-code arXiv citation |
 | B | Price-tier economics | **Complete** — `route.sh` + `role_profiles` + cost_bonus + Dispatch Confirmation |
 | C | Capability complementarity | **Complete** — 6-axis capability scores + role-weighted routing |
-| D | Failover / rate-limit redundancy | **Partial** — implemented, `enabled=false` by default; **undocumented** opt-in |
+| D | Failover / rate-limit redundancy | **Partial** — config schema present, `enabled=false` by default; script-side dispatch not yet implemented (future work — not yet implemented) |
 | E | Knowledge cutoff complementarity | **Documented-only** — incidental benefit, no routing signal |
 | F | Self-consistency signal | **Partial** — aggregator merges verdicts but does not record `n_actors_concur` |
 | G | Training data diversity | **Documented-only** — incidental benefit of cross-vendor dispatch |

@@ -180,3 +180,28 @@ If in doubt, prefer the cross-vendor path. `spawn_agent` is for users who have a
 - Cross-vendor review outperforms same-vendor: same-actor parallel reviewers exhibit ≥85% sycophantic modal adoption ([Cost of Consensus, 2025](https://arxiv.org/html/2605.00914v1)). Heterogeneous reviewers preserve disagreement ([Preserving Disagreement, 2025](https://arxiv.org/html/2604.26561)).
 - Homogeneous multi-agent debate costs 2–3× more tokens for equal or worse accuracy vs single-agent self-correction. One good turn beats three mediocre parallel ones.
 - The `dissenting_concerns` field in `reviewer.schema.json` exists to preserve minority dissent against consensus collapse.
+
+---
+
+## Polling outside Cursor (wait_for_done.sh)
+
+When running turn scripts outside the Cursor IDE — in CI, from a remote terminal, or in a cron job — `AwaitShell` is unavailable. Use `scripts/wait_for_done.sh` instead:
+
+```bash
+# Start a turn in the background
+bash scripts/claude_turn.sh my-thread --role executor --task "..." &
+
+# Poll for completion (checks for .done sentinel file)
+bash scripts/wait_for_done.sh my-thread
+echo "Turn complete, exit code: $?"
+```
+
+`wait_for_done.sh` polls `<thread_dir>/.done` every 5 seconds and exits with the turn's exit code. Use `--timeout-s 1800` to set a max wait (default: 3600s).
+
+---
+
+## Future work
+
+The following features are designed but not yet implemented:
+
+**Automatic failover.** When a turn fails due to rate-limit, timeout, or stall, `_common.sh:dispatch_with_fallback` would walk each model's `fallback_chain` (defined in `models.json`) and re-dispatch, logging each hop to `<thread_dir>/THREAD_LEDGER.md`. Opt-in via `ROUNDTABLE_FAILOVER_OPT_IN=1`. Until implemented, retry failed turns manually.
