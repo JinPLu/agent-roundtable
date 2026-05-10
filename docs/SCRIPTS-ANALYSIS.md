@@ -82,32 +82,31 @@ Subprocess isolation, deterministic `ROUNDTABLE_DONE` signal, API key loading fr
 
 Similar to `codex_turn.sh` with Claude-specific differences:
 
-1. Parse args (same structure + `--bare`, `--allowed-tools`, `--permission-mode`)
+1. Parse args (same role set as today; no interactive `--permission-mode` override in the stock script)
 2. `resolve_model` (resolves first alias in `role_defaults[role]` whose `actor` matches `claude`)
 3. Set `permission-mode` default by role:
-   - reviewer / devils-advocate: `plan` (no edits)
-   - others: `default`
-4. Build tool allowlist by role:
-   - reviewer: Read, Glob, Grep, specific Bash prefixes only
-   - executor: Read + write tools, disallows dangerous git/network
+   - `reviewer`, `reviewer-aggregator`, `devils-advocate`, **`planner`**: `plan` (read-only; no workspace writes)
+   - all other roles: `acceptEdits`
+4. **Tool / disallowed list** by role: reviewer-likes and **planner** get no extra `disallowedTools` line; executor and discussant get destructive-git `disallowedTools` patterns (minimal disablement; `plan` mode is the main write guard for planner/reviewer).
 5. Set `ROUNDTABLE_SKIP_ROLE_SYS=1` — role file passed as `--append-system-prompt` (not injected twice)
-6. Run `timeout $TIMEOUT claude -p "$PROMPT" --append-system-prompt ROLE --output-format json ...`
-7. Extract result via `extract_claude_result.py` (jq optional)
-8. Append turn, extract verdict, meta + done
+6. Run `timeout $TIMEOUT claude -p … --output-format json` with `--permission-mode` as above; stdout is the JSON blob, written to `last.json`
+7. Extract final text via `jq` or `extract_claude_result.py` into `last.md`
+8. **Planner + `plan` mode:** copy `last.md` to `artifacts/plan-claude-<ts>.md` so operators get a file even though the model could not write `artifacts/` itself
+9. Append turn, extract verdict (reviewer roles), meta + done
 
 ### Hard-coded
 
-- Reviewer tool allowlist (Read, Glob, Grep, specific bash patterns)
-- Executor disallows destructive git commands
+- `plan` permission for reviewer-like roles and **planner**; `acceptEdits` for executor and discussant
+- Executor / discussant: destructive git command patterns in `disallowedTools`
 - Default timeout 1500s
 
 ### Flexible
 
-`--model`, `--bare` (reduces `CLAUDE.md` influence for isolation), `--blind`, `--timeout-s`, `--allowed-tools` override, `--permission-mode` override
+`--model`, `--blind`, `--timeout-s`, `--task` / `--task-file`, per-turn addendum; no first-class flag to override permission mode in the stock script (change role or edit the script)
 
 ### Capability impact
 
-`--bare` skips `CLAUDE.md` — good for blind reviewers (isolation), but removes useful project context for executors. Consider only using `--bare` in review roles.
+**Planner `plan` mode:** the model must put its full plan in the assistant message; file writes under `artifacts/` are performed by the shell (`artifacts/plan-claude-*.md`). Reviewers remain read-only via the same permission mode.
 
 ---
 
