@@ -94,7 +94,7 @@ There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **paren
 ### Aggregation (Phase B)
 
 - **Role**: `planner` with an aggregate `--task`, or a dedicated synthesis role.
-- **Actor**: High reasoning + long context (e.g. `claude-opus`, `cursor-claude-4.7-opus`).
+- **Actor**: High reasoning + long context (e.g. `claude-code-cli-opus`, `cursor-claude-4.7-opus`).
 - **Output**: Final **`artifacts/PLAN.md`**.
 
 ## Step-by-step (typical)

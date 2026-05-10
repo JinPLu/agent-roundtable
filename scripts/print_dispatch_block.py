@@ -134,6 +134,21 @@ def main(argv: list[str] | None = None) -> int:
     registry = _load_registry()
     m = _resolve_model(registry, args.model)
     actor = m.get("actor", "?")
+    cli_arg = m.get("cli_arg", "?")
+    endpoint = m.get("endpoint") or {}
+    base_url = endpoint.get("base_url", "")
+
+    # Route description disambiguates CLI vs Cursor subagent paths.
+    # Two models with the same underlying vendor (e.g. Anthropic) may resolve to
+    # different actor families with different prices, proxies, and failure modes.
+    if actor == "cursor-subagent":
+        route_str = f"Cursor subagent (Task in IDE)  →  cli_arg: {cli_arg}"
+    elif actor == "claude":
+        route_str = f"Claude Code CLI → {base_url or '?'}  →  cli_arg: {cli_arg}"
+    elif actor == "codex":
+        route_str = f"Codex CLI → {base_url or '?'}  →  cli_arg: {cli_arg}"
+    else:
+        route_str = f"actor={actor}  →  cli_arg: {cli_arg}"
 
     pricing_str = _format_pricing(m.get("pricing") or {})
     capability_str = _top_capabilities(m.get("capabilities") or {})
@@ -147,14 +162,13 @@ def main(argv: list[str] | None = None) -> int:
         f"  Thread  : {args.thread}",
         f"  Project : {args.project}",
         f"  Role    : {args.role}",
-        f"  Actor   : {actor}  ->  model: {args.model}",
+        f"  Alias   : {args.model}  ({actor})",
+        f"  Route   : {route_str}",
         f"  Specs   : {specs}",
         f"  Effort  : {args.effort}",
         f"  Est.    : {est}",
         f"  Multi?  : {args.multi}",
         f"  Budget  : {args.budget}",
-        "",
-        "Proceed? Or adjust actor / effort / budget / go multi?",
     ]
     out = "\n".join(block)
 

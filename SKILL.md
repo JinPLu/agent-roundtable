@@ -42,6 +42,8 @@ The following are enforced by scripts or role prompts; they are not part of the 
 - **Independence within a turn** — each turn's agent reads source files and runs verification commands directly (`THREAD.md` is a log, not evidence). Enforced via `roles/_independence_rule.md` injected into every role's system prompt.
 - **Project-root guard** — `_common.sh` warns when `ROUNDTABLE_PROJECT_ROOT` resolves to the skill's own directory; `roundtable-setup` Phase 0 prevents this interactively.
 - **Context hygiene** — when a turn surfaces a persistent project fact, the executor/planner role prompt instructs it to update `AGENTS.md` / `.planning/` before handing off. Not enforced by the parent.
+- **Route disambiguation** — `models.json` aliases use a route prefix so the chat parent and the user always see which path runs: `codex-cli-*` → Codex CLI (`codex_turn.sh`), `claude-code-cli-*` → Claude Code CLI (`claude_turn.sh`), `cursor-*` → Cursor subagent (`Task(...)`). Two aliases for the same vendor model on different routes have different prices and failure modes — never collapse them in conversation.
+- **Failover requires re-confirm** — if a turn script fails (HTTP 5xx, timeout, vendor-specific 502 like `claude-api.org`) and the parent considers switching route (e.g. `claude-code-cli-opus` → `cursor-claude-4.7-opus`), it MUST call `AskQuestion(retry-same-route / fallback-to-<other> / cancel)` and re-paste the Dispatch Confirmation for the new route. Silent fallback hides cost / quality changes.
 
 ## Dispatch Confirmation
 
@@ -50,13 +52,16 @@ Proposed dispatch
   Thread  : <slug>
   Project : <ROUNDTABLE_PROJECT_ROOT>
   Role    : <role>
-  Actor   : <actor>  →  model: <model-id>
+  Alias   : <alias>  (<actor>)                    ← key in models.json
+  Route   : <CLI vs Cursor subagent + base_url>   ← what actually runs
   Specs   : <Price per 1M in/out> | <Key benchmarks> | <best_for/notes>
   Effort  : <low | medium | high>
-  Est.    : $<low>–$<high>/turn  via `route.sh --role <role> -m <model> --estimate --turns 1`
+  Est.    : $<low>–$<high>/turn  via `route.sh --role <role> -m <alias> --estimate --turns 1`
   Multi?  : <single turn | N parallel>
   Budget  : <max-rounds=N | max-turns=M | max-wallclock=Xm>  (optional; default: 3 rounds, no clock cap)
 ```
+
+`Alias` is the **key in `models.json`** (e.g. `claude-code-cli-opus`). `Route` is **how the turn actually runs** (Claude Code CLI vs Codex CLI vs Cursor subagent + the upstream base_url). The same underlying vendor model can ship via different routes with different prices, proxies, and failure modes — never conflate them.
 
 ### Confirmation response
 
