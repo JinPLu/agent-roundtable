@@ -69,9 +69,12 @@ if [[ -n "$task_file" && ! -r "$task_file" ]]; then
   exit 2
 fi
 
-if [[ -z "$model" ]]; then
-  eval "$( resolve_model codex "$role" "" "$effort" )"
-fi
+# Always resolve via models.json so an alias passed as --model (e.g.
+# `codex-cli-gpt-5.5`) is translated to its cli_arg (e.g. `gpt-5.5`).
+# Without this, an orchestrator-supplied alias goes verbatim to the
+# CLI / proxy. cialloapi.cn rejects bare aliases like `gpt-5` per
+# https://doc.claude-api.org/faq.
+eval "$( resolve_model codex "$role" "$model" "$effort" )"
 
 # Sandbox per role: read roles get vendor-enforced read-only (parity with
 # Claude's --permission-mode plan); only executor needs workspace-write.

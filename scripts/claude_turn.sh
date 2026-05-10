@@ -67,9 +67,13 @@ if [[ -n "$task_file" && ! -r "$task_file" ]]; then
   exit 2
 fi
 
-if [[ -z "$model" ]]; then
-  eval "$( resolve_model claude "$role" "" "$effort" )"
-fi
+# Always resolve via models.json so an alias passed as --model (e.g.
+# `claude-code-cli-opus`) is translated to its cli_arg (e.g.
+# `claude-opus-4-7`). Without this, the orchestrator's alias is sent
+# verbatim to the CLI / proxy — claude-api.org rejects bare aliases
+# like `claude-opus` per https://doc.claude-api.org/faq (503 No
+# available accounts, surfaced as 502 by Cloudflare retries).
+eval "$( resolve_model claude "$role" "$model" "$effort" )"
 
 # Permission-mode (per Anthropic headless / dontAsk research, 2026-05-11):
 # - reviewer-likes + planner -> plan (read-only)

@@ -505,6 +505,22 @@ if not alias:
             alias = aliases[0]
 effort = eo or (aliases.get("effort") if isinstance(aliases, dict) else "medium")
 m = models.get(alias, {})
+if not m and alias:
+    # Alias not in registry — likely a stale name (e.g. "claude-opus" after
+    # rename to "claude-code-cli-opus") or a typo. Warn loudly and pass the
+    # alias through as cli_arg; the CLI / proxy will produce a clearer error
+    # (e.g. "503 No available accounts" for bare names on claude-api.org)
+    # which surfaces in turn logs. Without this warning the same failure mode
+    # used to read as a transient 502 and burn retry budgets.
+    actor_aliases = sorted(
+        k for k, v in models.items()
+        if not k.startswith("_") and (v.get("actor") or "") == actor
+    )
+    sys.stderr.write(
+        f"WARN [resolve_model]: alias {alias!r} not in models.json for actor "
+        f"{actor!r}. Passing it to the CLI verbatim — this may trigger a "
+        f"proxy 503/502. Known {actor!r} aliases: {actor_aliases[:8]}\n"
+    )
 cli_arg = m.get("cli_arg", alias)
 # Output is consumed by `eval $(resolve_model ...)` in turn scripts. shlex.quote
 # every value so a malicious or typo'd cli_arg / alias containing shell
