@@ -144,6 +144,37 @@ $SKILL/scripts/claude_turn.sh $slug --role reviewer-aggregator \
 
 ---
 
+## Single-vendor parallel via Codex `spawn_agent` (opt-in)
+
+Codex 0.128+ ships a native `[agents]` config + `spawn_agent` tool that lets a parent Codex turn fan out to multiple Codex sub-agents inside one process. This is **cheaper than the cross-vendor pattern** in §"N parallel executors" because (a) only one CLI is dispatched, (b) the parent shares prompt cache with its children, (c) no per-vendor auth boot tax. **It is opt-in** and the roundtable main path does NOT use it — by design, because the cross-vendor diversity that defends against modal sycophancy (≥85% adoption when reviewers share an actor family) is precisely what `spawn_agent` gives up.
+
+### When `spawn_agent` is the right tool
+
+- The parallelism is for **search / coverage**, not for **independence**. Examples: enumerate N candidate refactors of one file, generate N test variations, fan out across N independent files in a large rename — tasks where single-vendor agreement is fine and cheaper > diverse.
+- You do **not** need a reviewer-aggregator after the fan-out. (If you do, prefer cross-vendor.)
+- Wallclock matters and the task fits in Codex's session budget.
+
+### When NOT to use `spawn_agent` (use the cross-vendor pattern)
+
+- Reviewing for sycophancy / consensus-collapse risk — needs heterogeneous reviewers, see [Cost of Consensus, 2025](https://arxiv.org/html/2605.00914v1).
+- Planning where you want option diversity — Phase A of `roundtable-plan` exists exactly to break single-actor framing.
+- Anything where the failure mode "every agent missed the same thing because they share priors" would be costly.
+
+### Wiring sketch (advanced — read Codex docs first)
+
+`~/.codex/config.toml` registers child agent profiles; the parent invokes them via the `spawn_agent` tool. Roundtable does not orchestrate this — write a one-off prompt that asks the Codex executor to call `spawn_agent` N times and collect results, then run a normal `codex_turn.sh` executor with that prompt as `--task`. Capture children's output through the parent's `last.md`; do **not** try to reverse-engineer child history into per-actor THREAD.md entries (would break independence accounting).
+
+### Cost trade-off (rule of thumb)
+
+| Pattern | Approx. token cost | Diversity defence |
+|---|---|---|
+| `roundtable-execute` cross-vendor race (N=2) | ~2× single executor + aggregator overhead | Strong — different actor families |
+| `spawn_agent` single-vendor fan-out (N=2) | ~1.2–1.4× single executor (cache reuse) | None — same actor, same priors |
+
+If in doubt, prefer the cross-vendor path. `spawn_agent` is for users who have already paid the diligence cost of confirming their task does not need diversity.
+
+---
+
 ## Evidence — when multi-agent helps
 
 - Cross-vendor review outperforms same-vendor: same-actor parallel reviewers exhibit ≥85% sycophantic modal adoption ([Cost of Consensus, 2025](https://arxiv.org/html/2605.00914v1)). Heterogeneous reviewers preserve disagreement ([Preserving Disagreement, 2025](https://arxiv.org/html/2604.26561)).
