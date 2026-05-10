@@ -1,6 +1,7 @@
 ---
 name: roundtable-execute
 description: Use when a single executor should implement artifacts/PLAN.md (or GOAL.md) in the main worktree, with a mandatory post-run scope check surfaced to the user.
+disable-model-invocation: true
 ---
 
 # Roundtable Execute

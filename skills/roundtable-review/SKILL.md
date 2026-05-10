@@ -1,6 +1,7 @@
 ---
 name: roundtable-review
 description: Use when reviewing code, auditing security, checking a PR, or finding bugs and the user wants cross-vendor blind reviewers and an aggregated verdict — not a single-model review.
+disable-model-invocation: true
 ---
 
 # Roundtable Review

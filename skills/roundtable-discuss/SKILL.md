@@ -1,6 +1,7 @@
 ---
 name: roundtable-discuss
 description: Deprecated — use roundtable-plan Phase A instead.
+disable-model-invocation: true
 ---
 
 # Roundtable Discuss (deprecated)

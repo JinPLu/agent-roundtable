@@ -1,6 +1,7 @@
 ---
 name: roundtable-goal
 description: Use when pursuing a feature or refactor to convergence — pure orchestration over roundtable-plan → roundtable-execute → roundtable-review with budget, stall, and scope handling.
+disable-model-invocation: true
 ---
 
 # Roundtable Goal

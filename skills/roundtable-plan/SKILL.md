@@ -1,6 +1,7 @@
 ---
 name: roundtable-plan
 description: Use when the user wants a robust implementation plan, architecture design, step-by-step strategy, or open-ended cross-vendor research before committing to a single approach. Phase A surfaces options; Phase B aggregates into an executable PLAN.md.
+disable-model-invocation: true
 ---
 
 # Roundtable Plan

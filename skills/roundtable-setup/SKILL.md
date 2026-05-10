@@ -1,6 +1,7 @@
 ---
 name: roundtable-setup
 description: Use when the user asks to set up, initialize, or configure agent-roundtable, when `models.json` is missing, or when a project lacks `AGENTS.md` / `CLAUDE.md` for full-blood agent boot.
+disable-model-invocation: true
 ---
 
 # Roundtable Setup
@@ -11,7 +12,7 @@ Bring a fresh checkout of `agent-roundtable` to a state where any sub-skill can 
 
 - `models.json` is missing or contains only the `_template` entry.
 - The user says "set up", "initialize", "configure", "import a model", "switch backend".
-- A sub-skill (`roundtable-discuss`, `roundtable-review`, `roundtable-execute`, `roundtable-goal`) refused to dispatch because `models.json` is absent.
+- A sub-skill (`roundtable-plan`, `roundtable-review`, `roundtable-execute`, `roundtable-goal`) refused to dispatch because `models.json` is absent.
 - The user's project has no `AGENTS.md` and you are about to run a multi-turn flow against it.
 
 ## Don't use when
@@ -87,9 +88,9 @@ If the user already has a `.claude/settings.json`, **do not overwrite**. Diff th
 
 After setup succeeds, point the user at the next sub-skill that matches their actual goal:
 
-- "Now you can run `roundtable-discuss` to surface design options."
+- "Now you can run `roundtable-plan` to research options or build an executable PLAN.md."
 - "Now you can run `roundtable-review` for a cross-vendor review."
-- "Now you can run `roundtable-execute` for N parallel candidate implementations."
+- "Now you can run `roundtable-execute` to implement PLAN.md with a single executor (advanced N-parallel race in docs/advanced.md)."
 - "Now you can run `roundtable-goal` for a planner→executor→reviewer convergence loop."
 
 Do not auto-dispatch — wait for the user to state the task.
