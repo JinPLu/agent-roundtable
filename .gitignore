@@ -17,3 +17,9 @@ Thumbs.db
 
 # Runtime artifacts
 .roundtable/
+
+# Internal dev tree (audits, research drafts, deprecated stubs)
+.dev/
+
+# Smoketest scratch directories
+.blind_smoketest*
