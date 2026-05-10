@@ -16,6 +16,7 @@ Read the sub-skill that matches the user's intent **before** taking any action. 
 |--------|-----------|
 | Configure / set API keys / generate `AGENTS.md` for a fresh checkout | `skills/roundtable-setup/SKILL.md` |
 | Open-ended design question — surface options across vendors, no recommendation | `skills/roundtable-discuss/SKILL.md` |
+| N parallel planners draft approaches; aggregator synthesizes a master plan | `skills/roundtable-plan/SKILL.md` |
 | Cross-vendor blind review, audit, PR check — verdict only, no code changes | `skills/roundtable-review/SKILL.md` |
 | N parallel executors implement the SAME task; aggregator picks the best candidate | `skills/roundtable-execute/SKILL.md` |
 | Single executor + parallel blind review, iterate to convergence on a fixed goal | `skills/roundtable-goal/SKILL.md` |
@@ -27,6 +28,7 @@ Read the sub-skill that matches the user's intent **before** taking any action. 
 3. **Independent verification.** Each agent reads source files and runs verification commands directly. `THREAD.md` is a log, not evidence. The full rule lives at `roles/_independence_rule.md` and is included in every role system prompt.
 4. **Cross-vendor blind for parallel review.** Parallel reviewers must come from different actor families (e.g. one OpenAI-compat, one Anthropic-compat) and MUST use the `--blind` flag. Modal adoption sycophancy is 85% when reviewers see prior verdicts.
 5. **Minimal tool disablement.** Agent CLIs run with their full tool surface (Read, Write, Bash, WebSearch, WebFetch). Reviewer roles get read-only via `--permission-mode plan`; only destructive git operations are blocked for write roles.
+6. **Model Awareness.** When proposing a model, the chat parent MUST read its entry in `models.json` (or use `route.sh` output) and explicitly state its pricing, benchmarks, and `best_for` notes in the Dispatch Confirmation. Do not guess; read the registry.
 
 ## Dispatch Confirmation
 
@@ -36,6 +38,7 @@ Proposed dispatch
   Project : <ROUNDTABLE_PROJECT_ROOT>
   Role    : <role>
   Actor   : <actor>  →  model: <model-id>
+  Specs   : <Price per 1M in/out> | <Key benchmarks> | <best_for/notes>
   Effort  : <low | medium | high>
   Est.    : $<low>–$<high>/turn  via `route.sh --role <role> -m <model> --estimate --turns 1`
   Multi?  : <single turn | N parallel>
