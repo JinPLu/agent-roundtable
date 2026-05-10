@@ -15,26 +15,17 @@
 
 ---
 
-## Model registry (shipped defaults from `models.example.json`)
+## Alias naming convention
 
-The aliases below ship in `models.example.json`. Any user can swap them for their own
-BYOK aliases — the registry is the source of truth, this table is illustrative.
+Alias prefix encodes the route:
 
-| Alias | Actor | Underlying | Context | Best for |
-|-------|-------|-----------|---------|---------|
-| `codex-cli-gpt-5.5` | codex | OpenAI GPT-5.5 (Apr 2026) | 1M tok | Codex-side executor / planner |
-| `codex-cli-gpt-5.3-codex` | codex | OpenAI GPT-5.3-Codex (Feb 2026) | 400K tok | Cheaper Codex executor; terminal-heavy tasks |
-| `claude-code-cli-opus` | claude | Anthropic Claude Opus 4.7 (Apr 2026) | 1M tok | Highest-rigor reviewer (SWE-Pro leader) |
-| `claude-code-cli-sonnet` | claude | Anthropic Claude Sonnet 4.6 (Feb 2026) | 1M tok | Balanced executor / discussant |
-| `cursor-composer-2` | cursor-subagent | Cursor Composer 2 | 200K tok | Cheap parallel executor; doc/code fan-out |
-| `cursor-claude-4.7-opus` | cursor-subagent | Claude Opus 4.7 (thinking-high) | 1M tok | Reviewer-aggregator; hardest reviewer |
-| `cursor-claude-4.6-sonnet` | cursor-subagent | Claude Sonnet 4.6 (thinking-medium) | 1M tok | Reviewer; executor-heavy |
-| `cursor-gemini-3.1-pro` | cursor-subagent | Gemini 3.1 Pro | 1M tok | Cross-vendor third opinion; ARC-AGI / scientific QA |
+- `codex-cli-*` → Codex CLI (`codex_turn.sh`)
+- `claude-code-cli-*` → Claude Code CLI (`claude_turn.sh`)
+- `cursor-*` → Cursor subagent (`Task` in IDE)
 
-> The alias prefix encodes the route: `codex-cli-*` → Codex CLI (`codex_turn.sh`), `claude-code-cli-*` → Claude Code CLI (`claude_turn.sh`), `cursor-*` → Cursor subagent (`Task` in IDE). Two aliases for the same underlying vendor model on different routes carry different prices and proxies — never collapse them in conversation.
+Two aliases for the same underlying vendor model on different routes carry different prices, proxies, and failure modes — never collapse them in conversation. See `models.example.json` for the canonical alias list; `models.json` for your local active registry; `backend.sh show` for what's currently importable.
 
-Speak in alias *categories* when writing prompts — "your Codex executor alias", "your
-reviewer-aggregator alias" — and let the registry resolve to a concrete name.
+When writing role tasks, prefer **alias categories** (e.g. "your Codex executor alias", "your reviewer-aggregator alias") and let the registry resolve to a concrete name.
 
 ---
 

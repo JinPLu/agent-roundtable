@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 > The chat parent orchestrates; this sub-skill never auto-dispatches (see root [SKILL.md](../../SKILL.md)).
 
-Use when the user wants cross-vendor perspectives before committing to code **or** when they need an option matrix and trade-offs first (the former `roundtable-discuss` flow is **Phase A only**).
+Use when the user wants cross-vendor perspectives before committing to code **or** when they need an option matrix and trade-offs first.
 
 ## Already have a Cursor plan?
 
@@ -111,5 +111,4 @@ There is no CLI flag on `claude_turn.sh` / `codex_turn.sh` for this; the **paren
 
 ## Related
 
-- Deprecated alias: old `roundtable-discuss` → **this skill** with Phase A only (`ROUNDTABLE_STOP_AFTER_PLAN_PHASE=phase-a`).
 - Execution: `skills/roundtable-execute/SKILL.md`. Convergence loop: `skills/roundtable-goal/SKILL.md`.
