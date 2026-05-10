@@ -113,6 +113,27 @@ _prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" 
 # Build CLI args. Mount thread_dir + (when set and distinct) ROUNDTABLE_PROJECT_ROOT
 # so agents can actually open project files (.planning/, source code, etc.).
 _args=( -p --output-format json --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
+
+# Per-turn firewall: cap in-turn $/iteration spend so a runaway loop cannot
+# burn the whole roundtable budget (the roundtable parent budget is at
+# round granularity, not turn-internal). Defaults are env-overridable;
+# unset / empty values disable the corresponding flag.
+_max_budget_usd="${ROUNDTABLE_CLAUDE_MAX_BUDGET_USD-10}"
+_max_turns="${ROUNDTABLE_CLAUDE_MAX_TURNS-80}"
+if [[ -n "$_max_budget_usd" ]]; then
+  if claude --help 2>/dev/null | grep -q -- '--max-budget-usd'; then
+    _args+=( --max-budget-usd "$_max_budget_usd" )
+  else
+    echo "WARN [claude_turn.sh]: claude --max-budget-usd not supported by installed CLI; skipping firewall." >&2
+  fi
+fi
+if [[ -n "$_max_turns" ]]; then
+  if claude --help 2>/dev/null | grep -q -- '--max-turns'; then
+    _args+=( --max-turns "$_max_turns" )
+  else
+    echo "WARN [claude_turn.sh]: claude --max-turns not supported by installed CLI (need v2.x with this flag); skipping turn-count firewall." >&2
+  fi
+fi
 if [[ -n "${ROUNDTABLE_PROJECT_ROOT:-}" && "$ROUNDTABLE_PROJECT_ROOT" != "$_cwd" && "$ROUNDTABLE_PROJECT_ROOT" != "$thread_dir" ]]; then
   _args+=( --add-dir "$ROUNDTABLE_PROJECT_ROOT" )
 fi
