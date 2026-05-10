@@ -24,6 +24,7 @@ Options:
   --task TEXT       Per-turn instruction appended to the prompt.
   --task-file FILE  Per-turn instruction read from file (use for long inputs).
   --blind           Suppress prior reviewer verdict — required for parallel reviewers.
+  --force           Bypass dispatch confirmation gate (CI/scripted use only).
   -h, --help        Print this help.
 
 Environment:
@@ -50,10 +51,14 @@ while [[ $# -gt 0 ]]; do
     --task) task="$2"; shift 2;;
     --task-file) task_file="$2"; shift 2;;
     --blind) blind=1; shift;;
+    --force) export ROUNDTABLE_FORCE=1; shift;;
     *) echo "unknown flag: $1 (try -h)" >&2; exit 2;;
   esac
 done
 [[ -z "$role" ]] && { echo "ERROR: --role required" >&2; exit 2; }
+
+# Gate 3.2: require dispatch confirmation unless --force or ROUNDTABLE_DISPATCH_CONFIRMED=1
+check_dispatch_confirmed
 
 # Pre-flight: task-file must be readable BEFORE we touch anything else.
 if [[ -n "$task_file" && ! -r "$task_file" ]]; then
@@ -86,6 +91,13 @@ esac
 thread_dir="$(require_thread "$slug")"
 ts_c="$(ts_compact_unique)"
 repo_root="$ROUNDTABLE_PROJECT_ROOT"
+
+# Gate 3.3: same-vendor reviewer diversity check (warning only)
+if [[ "$role" == "reviewer-aggregator" ]]; then
+  python3 "$SKILL_DIR/scripts/lib/check_review_diversity.py" "$thread_dir" || true
+  # exit 2 = warning only; don't block aggregation
+fi
+
 _role_sys_key="$role"
 [[ "$role" == "reviewer-aggregator" ]] && _role_sys_key="reviewer"
 # devils-advocate has its own system prompt; no alias needed
@@ -300,33 +312,11 @@ fi
 
 write_meta "${hist}/meta.json" "claude" "${model:-default}" "$effort" "$role" "$perm" "$_ec" "$_dur" "$hist" "${ANTHROPIC_BASE_URL:-unset}" "${_warnings[@]}"
 
-if [[ "$blind" -eq 1 ]]; then
-  python3 - "${hist}/meta.json" <<'PY'
-import json, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-d = json.loads(p.read_text())
-d['blind'] = True
-p.write_text(json.dumps(d, indent=2))
-PY
-fi
+patch_blind_meta "${hist}/meta.json" "$blind"
 
 # Append project-wide usage record (best-effort; never alter exit status).
 # See scripts/lib/log_turn_usage.py and docs/research/COST_ESTIMATION-2026-05-10.md §6.4.
-python3 "${SKILL_DIR}/scripts/lib/log_turn_usage.py" \
-  --actor claude \
-  --thread "$slug" \
-  --model "${model:-default}" \
-  --role "$role" \
-  --effort "$effort" \
-  --exit-code "$_ec" \
-  --elapsed-s "$_dur" \
-  --source-file "${hist}/last.json" \
-  >/dev/null 2>>"${hist}/stderr.log" || \
-  echo "WARN [claude_turn.sh]: usage log append failed (non-fatal)" >&2
-
-echo "history=${hist}"
-echo "exit_code=${_ec}"
-echo "duration_s=${_dur}"
-emit_done "$thread_dir" "$hist" "claude" "$role" "$_ec" "$_turn_n" "$_dur"
+finalize_turn "$thread_dir" "$hist" "claude" "$role" "$_ec" "$_turn_n" "$_dur" \
+  "$slug" "${model:-default}" "$effort" "${hist}/last.json"
 exit $_ec
 }
