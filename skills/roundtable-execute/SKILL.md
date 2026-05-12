@@ -60,6 +60,8 @@ Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) from the 
 
 4. Wait for completion. Inspect the five-part body in `THREAD.md` and the actual diff in the repo.
 
+4.5. After the executor diff passes the mandatory scope check, run the oracle gate via `scripts/lib/oracle_runner.py` against `<PROJECT_ROOT>/.roundtable/oracles.yaml`. If any `must_pass` oracle fails, stop before review and have the parent auto-dispatch `--task "Fix oracle <name>: <stdout_tail>"`.
+
 5. **Optional:** ask the executor to add `artifacts/EXEC_REPORT.md` (what changed, how to verify, follow-ups) — not required by the scripts but useful for hand-off.
 
 ### Phase 2: scope check (orchestrator / parent — required)

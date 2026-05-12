@@ -250,10 +250,10 @@ while :; do
     if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
       cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
         claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
-        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/cli_stderr.log"
     else
       cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
-        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/stderr.log"
+        < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/cli_stderr.log"
     fi
   ) &
   _proc_pid=$!
@@ -338,7 +338,7 @@ if [[ -s "${hist}/last.md" ]]; then
   _turn_n="$(append_turn_md "${thread_dir}/THREAD.md" "claude" "$role" "$_ts" "${hist}/last.md")"
   echo "appended_turn=${_turn_n}"
 else
-  echo "WARNING: empty result; check ${hist}/stderr.log and last.json" >&2
+  echo "WARNING: empty result; check ${hist}/cli_stderr.log and last.json" >&2
 fi
 
 if [[ ( "$role" == "reviewer" || "$role" == "reviewer-aggregator" || "$role" == "devils-advocate" ) && -s "${hist}/last.md" ]]; then

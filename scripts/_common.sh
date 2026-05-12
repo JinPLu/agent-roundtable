@@ -379,6 +379,23 @@ build_prompt() {
       emit_repo_context
     fi
 
+    # ── Project lessons ─────────────────────────────────────────────────────
+    # Lessons are optional and silently skipped when no project memory exists.
+    if [[ -n "$current_history_dir" ]]; then
+      local _lessons_query
+      _lessons_query="$(mktemp "${current_history_dir}/_lessons_query_$(ts_compact)_XXXXXXXX.txt")"
+      {
+        cat "${thread_dir}/GOAL.md"
+        printf '\n'
+        cat "$addendum_file"
+      } > "$_lessons_query"
+      python3 "${SKILL_DIR}/scripts/lib/lessons_inject.py" \
+        --project "$ROUNDTABLE_PROJECT_ROOT" \
+        --query-file "$_lessons_query" \
+        --top-k "${ROUNDTABLE_LESSONS_TOP_K:-3}" || true
+      rm -f "$_lessons_query"
+    fi
+
     # ── 5. EARLIER HISTORY (rolling summary, only if file exists) ───────────
     # Blind mode (ROUNDTABLE_SKIP_LATEST_VERDICT=1) suppresses this section
     # wholesale: THREAD_SUMMARY.md is produced by compact_thread.sh which
@@ -691,6 +708,18 @@ finalize_turn() {
     >/dev/null 2>>"${hist}/stderr.log" || \
     echo "WARN [${actor}_turn.sh]: usage log append failed (non-fatal)" >&2
   append_budget_ledger "$thread_dir" "$role" "$model" "$est_usd"
+  local _trace_src="${hist}/cli_stderr.log"
+  [[ -f "$_trace_src" ]] || _trace_src="${hist}/stderr.log"
+  local _trace_out="${hist}/trace.json"
+  local _trace_args=(
+    python3 "${SKILL_DIR}/scripts/lib/trace_capture.py"
+    "$_trace_src"
+    --out "$_trace_out"
+    --model-version "$model"
+    --source-file "$source_file"
+  )
+  [[ -n "$turn_n" ]] && _trace_args+=( --turn-n "$turn_n" )
+  "${_trace_args[@]}" >/dev/null 2>&1 || true
   echo "history=${hist}"
   echo "exit_code=${turn_exit}"
   echo "duration_s=${dur}"

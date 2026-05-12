@@ -89,6 +89,7 @@ Goal-loop overrides standalone-execute behaviour:
 - After the executor turn, run `python3 $SKILL/scripts/lib/scope_check.py --thread <slug>`.
 - On `VIOLATION` → **do NOT call AskQuestion**. Auto-dispatch the next executor turn with `--task "Revert these out-of-scope paths: <paths>. Then re-implement the same step per artifacts/PLAN.md within In-scope paths only."` Then re-run scope_check on the new diff. Two consecutive VIOLATIONs on the same round = treat as stall (Phase 5 diagnostic planner).
 - On `NO_GOAL` → auto-dispatch a planner turn with `--task "GOAL.md In-scope paths is empty; populate it from PLAN.md before the next executor round."` Then retry Phase 2.
+- After `scope_check == PASS`, run the oracle gate. If any `must_pass` oracle fails, do **not** proceed to review; auto-dispatch executor with `--task "Fix oracle <name>: <stdout_tail>"`, then re-run execute + scope + oracle.
 
 ### Phase 3: parallel blind review
 
@@ -113,6 +114,10 @@ Read **`verdict.json`** + the executor body from `THREAD.md` and dispatch the ne
 | 2 stalls in a row (diagnosis didn't help) | Auto-loop to Phase 1 (re-plan) with `--task "Two consecutive rounds stalled; re-evaluate PLAN.md against current code state."` |
 | `next_action_hint` empty | Auto re-dispatch aggregator. If still empty: treat as stall. |
 | Otherwise (progressing) | Auto-loop to Phase 2 with `next_action_hint` as `--task`. |
+
+### Phase 6: extract lessons (only after convergence)
+
+When the loop reaches converged success, call `scripts/lib/lessons_extract.py` for the current thread so project memory records the final blockers / drift / scope lessons. This is a post-convergence maintenance step, not part of the normal recovery loop.
 
 ### The only AskQuestion the loop is allowed to emit
 

@@ -138,6 +138,33 @@
           }
         }
       }
+    },
+    "oracle_results": {
+      "type": "array",
+      "description": "Optional oracle gate results recorded before review.",
+      "items": {
+        "type": "object",
+        "required": ["name", "exit_code", "must_pass", "stdout_tail"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Oracle name."
+          },
+          "exit_code": {
+            "type": "integer",
+            "description": "Oracle exit code."
+          },
+          "must_pass": {
+            "type": "boolean",
+            "description": "Whether failure must block review."
+          },
+          "stdout_tail": {
+            "type": "string",
+            "description": "Tail of oracle stdout for diagnostics."
+          }
+        }
+      }
     }
   }
 }

@@ -181,10 +181,10 @@ set +e
   if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
     timeout --signal=TERM --kill-after=10 "${timeout_s}" \
       codex exec "${_args[@]}" "$(cat "$_prompt")" \
-      < /dev/null > "${hist}/trace.jsonl" 2>&1
+      < /dev/null > "${hist}/trace.jsonl" 2> >(tee "${hist}/cli_stderr.log" >> "${hist}/trace.jsonl")
   else
     codex exec "${_args[@]}" "$(cat "$_prompt")" \
-      < /dev/null > "${hist}/trace.jsonl" 2>&1
+      < /dev/null > "${hist}/trace.jsonl" 2> >(tee "${hist}/cli_stderr.log" >> "${hist}/trace.jsonl")
   fi
 ) &
 _proc_pid=$!

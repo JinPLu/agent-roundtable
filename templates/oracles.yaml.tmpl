@@ -1,0 +1,21 @@
+oracles:
+  - name: pytest
+    cmd: python3 -m pytest scripts/lib/test_*.py -x -q
+    must_pass: true
+    timeout_s: 600
+    on: [before_review, before_done]
+  - name: mypy
+    cmd: mypy scripts/lib
+    must_pass: true
+    timeout_s: 600
+    on: [before_review]
+  - name: ruff
+    cmd: ruff check scripts/lib
+    must_pass: false
+    timeout_s: 600
+    on: [before_review, before_done]
+  - name: scope_check
+    cmd: python3 scripts/lib/scope_check.py --thread <slug>
+    must_pass: true
+    timeout_s: 120
+    on: [before_review]
