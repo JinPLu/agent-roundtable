@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """compact_thread.py — compact old THREAD.md turns into THREAD_SUMMARY.md.
 
+Does **not** touch `artifacts/research/` — research logs stay verbatim on disk for cross-actor reuse.
+
 Usage: python3 compact_thread.py <thread_md> <keep_k>
 
 Reads <thread_md>, keeps the last <keep_k> turn blocks verbatim (prints them

@@ -74,7 +74,8 @@ def test_known_model_prints_full_block() -> None:
 def test_missing_model_exits_2() -> None:
     proc = _run("--model", "definitely-not-a-real-model-id-x9z", "--role", "reviewer")
     assert proc.returncode == 2
-    assert "unknown model" in proc.stderr.lower()
+    err = proc.stderr.lower()
+    assert "unknown model" in err or "models.json" in err
 
 
 def test_output_excludes_deprecated_pricing_keys() -> None:

@@ -1,0 +1,42 @@
+# Codex CLI profiles installed by agent-roundtable (`backend.sh apply-codex-profile`).
+# Keys mirror codex_turn.sh defaults; sandbox_mode / approval_policy align with round roles.
+
+[profiles.roundtable-executor]
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+[profiles.roundtable-executor-fast]
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+[profiles.roundtable-executor-heavy]
+sandbox_mode = "workspace-write"
+approval_policy = "never"
+
+[profiles.roundtable-planner]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-reviewer]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-devils-advocate]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-discussant]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-researcher]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-researcher-deep]
+sandbox_mode = "read-only"
+approval_policy = "never"
+
+[profiles.roundtable-reviewer-aggregator]
+sandbox_mode = "read-only"
+approval_policy = "never"

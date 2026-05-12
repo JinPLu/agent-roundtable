@@ -379,6 +379,9 @@ build_prompt() {
       emit_repo_context
     fi
 
+    # ── 4b. PRIOR RESEARCH (cross-actor artifact pool) ────────────────────────
+    python3 "${SKILL_DIR}/scripts/lib/prior_research_block.py" "$thread_dir" 2>/dev/null || true
+
     # ── Project lessons ─────────────────────────────────────────────────────
     # Lessons are optional and silently skipped when no project memory exists.
     if [[ -n "$current_history_dir" ]]; then
@@ -678,24 +681,87 @@ PY
 
 # ── Gate 3.5: append_budget_ledger ───────────────────────────────────────────
 # Append a JSONL cost record to <thread_dir>/.budget_ledger.jsonl after each turn.
-# Args: thread_dir role model est_usd (may be empty/null)
+# Args: thread_dir role model est_usd real_usd (JSON numbers or literal null)
 append_budget_ledger() {
-  local thread_dir="$1" role="$2" model="$3" est_usd="${4:-null}"
-  local ledger="${thread_dir}/.budget_ledger.jsonl"
-  local ts
-  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  printf '{"ts":"%s","role":"%s","model":"%s","est_usd":%s}\n' \
-      "$ts" "$role" "$model" "$est_usd" >> "$ledger"
+  local thread_dir="$1" role="$2" model="$3" est_usd="${4:-null}" real_usd="${5:-null}"
+  python3 - "$thread_dir" "$role" "$model" "${est_usd:-null}" "${real_usd:-null}" <<'PY'
+import datetime
+import json
+import pathlib
+import sys
+
+thread_dir, role, model, est_s, real_s = sys.argv[1:6]
+ledger = pathlib.Path(thread_dir) / ".budget_ledger.jsonl"
+
+
+def num_or_null(s: str):
+    if s in ("", "null", "None"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+rec = {
+    "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "role": role,
+    "model": model,
+    "est_usd": num_or_null(est_s),
+    "real_usd": num_or_null(real_s),
+}
+ledger.parent.mkdir(parents=True, exist_ok=True)
+with ledger.open("a", encoding="utf-8") as fh:
+    fh.write(json.dumps(rec) + "\n")
+PY
+}
+
+# ── CX2: extract_real_usage ──────────────────────────────────────────────────
+# Run the appropriate per-actor usage extractor and write <hist>/usage.json.
+# Echoes "<real_usd>" on stdout (or empty string), making it easy to capture
+# via $(extract_real_usage ...). Failures are silent — usage is best-effort.
+# Args: actor hist_dir source_file model
+extract_real_usage() {
+  local actor="$1" hist="$2" source_file="$3" model="${4:-}"
+  local extractor=""
+  case "$actor" in
+    codex)  extractor="${SKILL_DIR}/scripts/lib/extract_codex_usage.py" ;;
+    claude) extractor="${SKILL_DIR}/scripts/lib/extract_claude_usage.py" ;;
+    *) echo ""; return 0 ;;
+  esac
+  [[ -f "$extractor" ]] || { echo ""; return 0; }
+  [[ -n "$source_file" && -f "$source_file" ]] || { echo ""; return 0; }
+  local out="${hist}/usage.json"
+  python3 "$extractor" "$source_file" --out "$out" --model "$model" \
+    >/dev/null 2>>"${hist}/stderr.log" || { echo ""; return 0; }
+  [[ -s "$out" ]] || { echo ""; return 0; }
+  python3 - "$out" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print("")
+    sys.exit(0)
+ru = d.get("real_usd")
+if isinstance(ru, (int, float)):
+    print(ru)
+else:
+    print("")
+PY
 }
 
 # ── finalize_turn ────────────────────────────────────────────────────────────
 # Emit usage log, stdout KV lines, and the ROUNDTABLE_DONE signal at the end
 # of every turn script.
-# Args: thread_dir hist actor role exit_code turn_n duration_s slug model effort source_file [est_usd]
+# Args: thread_dir hist actor role exit_code turn_n duration_s slug model effort source_file [est_usd [real_usd]]
+#
+# CX2: when real_usd is empty/null we attempt to derive it from trace.jsonl /
+# stream.jsonl via extract_real_usage. Failure is silent (real_usd stays null
+# and check_budget.py falls back to est_usd).
 finalize_turn() {
   local thread_dir="$1" hist="$2" actor="$3" role="$4" turn_exit="$5"
   local turn_n="${6:-}" dur="${7:-0}" slug="$8" model="${9:-default}"
-  local effort="${10:-medium}" source_file="${11:-}" est_usd="${12:-null}"
+  local effort="${10:-medium}" source_file="${11:-}" est_usd="${12:-null}" real_usd="${13:-null}"
   python3 "${SKILL_DIR}/scripts/lib/log_turn_usage.py" \
     --actor "$actor" \
     --thread "$slug" \
@@ -707,7 +773,12 @@ finalize_turn() {
     --source-file "$source_file" \
     >/dev/null 2>>"${hist}/stderr.log" || \
     echo "WARN [${actor}_turn.sh]: usage log append failed (non-fatal)" >&2
-  append_budget_ledger "$thread_dir" "$role" "$model" "$est_usd"
+  if [[ -z "$real_usd" || "$real_usd" == "null" ]]; then
+    local _derived_real
+    _derived_real="$(extract_real_usage "$actor" "$hist" "$source_file" "$model" 2>/dev/null || echo "")"
+    [[ -n "$_derived_real" ]] && real_usd="$_derived_real"
+  fi
+  append_budget_ledger "$thread_dir" "$role" "$model" "$est_usd" "$real_usd"
   local _trace_src="${hist}/cli_stderr.log"
   [[ -f "$_trace_src" ]] || _trace_src="${hist}/stderr.log"
   local _trace_out="${hist}/trace.json"

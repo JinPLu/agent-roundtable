@@ -94,6 +94,30 @@ def _resolve_base(project_root: pathlib.Path, base: str | None) -> str:
     _die("Cannot determine base SHA; pass --base explicitly.", 2)
 
 
+def parse_goal_scope_patterns(goal_path: pathlib.Path) -> tuple[list[str], list[str]]:
+    """Return (in_scope, out_scope) globs — shared with realtime watcher tooling."""
+
+    return _parse_goal_md(goal_path)
+
+
+def classify_path_against_goal(
+    rel_path: str,
+    *,
+    in_scope: list[str],
+    out_scope: list[str],
+) -> tuple[str, str]:
+    """Return (status, reason) where status is ok | violation | warn."""
+
+    norm = rel_path.lstrip("./")
+    if _matches_any(norm, out_scope):
+        return "violation", "explicit_out_of_scope"
+    if not in_scope:
+        return "warn", "empty_in_scope_section"
+    if _matches_any(norm, in_scope):
+        return "ok", "matched_in_scope"
+    return "violation", "not_listed_in_scope"
+
+
 def _matches_any(path: str, patterns: list[str]) -> bool:
     """True if path matches any of the given glob/prefix patterns."""
     for pat in patterns:

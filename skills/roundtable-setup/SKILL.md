@@ -137,16 +137,49 @@ AskQuestion(
 )
 ```
 
-If the user selects `copy-template`, copy the template:
+If the user selects `copy-template`, install from the skill template (**always substitute `<SKILL_DIR>`** so bundled Cursor hooks resolve):
 
 ```bash
 mkdir -p "$ROUNDTABLE_PROJECT_ROOT/.claude"
-cp "$SKILL/templates/.claude/settings.json" "$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json"
+SKILL_ABS="$(cd "$SKILL" && pwd)"
+DST="$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json"
+[[ -f "$DST" ]] && cp "$DST" "${DST}.roundtable-bak"
+python3 <<PY
+from pathlib import Path
+skill_abs = Path("$SKILL_ABS")
+dst = Path("$DST")
+text = (skill_abs / "templates/.claude/settings.json").read_text(encoding="utf-8").replace("<SKILL_DIR>", str(skill_abs))
+dst.write_text(text, encoding="utf-8")
+print(f"wrote {dst} (backup: {dst}.roundtable-bak if existed)")
+PY
 ```
 
 The template denies destructive git operations (`git push`, `git reset --hard`, `git rebase`, `git filter-branch`, `git update-ref`) and reads of common secrets (`.env*`, `~/.aws/**`, `~/.ssh/**`, `credentials*`, `*secret*`, `*.pem`). With this file present, `claude_turn.sh` skips its inline `--disallowedTools` fallback in favour of project-level settings — same coverage, source-controllable, user-overridable.
 
-If the user selects `diff-existing` (settings file already present), read the existing file and recommend additions for any of the above deny rules that are missing; **do not overwrite**.
+It also embeds **Cursor-native hook entries** (`beforeShellExecution`, `postToolUse`, `stop`) pointing at `$SKILL/hooks/*.sh`. Enable **Third-party hooks / Skills** in Cursor so they load from this file after substitution.
+
+### 4b. Cursor hooks installer + Codex profiles (recommended)
+
+Dual path:
+
+1. **Bundled** — substitution step above already wires hook paths under the skill checkout.
+2. **Native user hooks** — idempotent merge into `~/.cursor/hooks.json` (survives moving the skill dir):
+
+```bash
+bash "$SKILL/scripts/install_hooks.sh"
+# uninstall:
+bash "$SKILL/scripts/install_hooks.sh" --uninstall
+```
+
+Optional **Codex CLI profiles** (sandbox / approval_policy per role — reduces redundant `-c` flags in `codex_turn.sh`):
+
+```bash
+bash "$SKILL/scripts/backend.sh" apply-codex-profile
+# undo:
+bash "$SKILL/scripts/backend.sh" unapply-codex-profile
+```
+
+If the user selects `diff-existing` (settings file already present), read the existing file and recommend additions for any of the above deny rules **and** optional Cursor hook entries that are missing; **do not overwrite** wholesale — merge surgically.
 
 ## Provider quirks (read before filling `cli_arg`)
 

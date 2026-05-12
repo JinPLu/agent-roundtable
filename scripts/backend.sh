@@ -888,6 +888,15 @@ PY
     echo "wrote $out (chmod 600)"
     ;;
 
+  apply-codex-profile)
+    python3 "${SKILL_DIR}/scripts/lib/install_codex_profile.py" apply \
+      --snippet "${SKILL_DIR}/templates/codex_profiles.toml.tmpl"
+    ;;
+
+  unapply-codex-profile)
+    python3 "${SKILL_DIR}/scripts/lib/install_codex_profile.py" remove
+    ;;
+
   *)
     echo "unknown command: $cmd" >&2
     _usage >&2

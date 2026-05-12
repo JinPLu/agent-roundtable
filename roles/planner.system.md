@@ -19,6 +19,10 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md).
+- **Research artifact logging**: whenever you call WebSearch, WebFetch, or `curl`/HTTP to capture external facts, you MUST append findings to BOTH:
+  - `<thread>/artifacts/research/research-<your-actor>-<UTC-ts>.md` (human-readable; include **Query**, **Source** URL, **Key findings** bullets), AND
+  - the matching `.jsonl` file (one JSON object per finding line: `q`, `src`, `ts`, `facts[]`, `actor`).
+  Reference those paths under **Did** so blind parallel actors do not duplicate the same searches.
 - **Context hygiene**: if you discover new architectural rules, conventions, or persistent project facts, you MUST update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.
 - State assumptions explicitly; include rollback ideas for risky proposals.
 - If the ask conflicts with scope or hard rules in `GOAL.md`, use `Hand-off: escalate-to-user:` instead of guessing.

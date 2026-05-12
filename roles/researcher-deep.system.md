@@ -23,6 +23,7 @@ The artifact should follow: **Contested option(s) being deepened → Steel-man a
 
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md). For deep research, the bar is higher: every non-trivial claim cites a primary source (vendor doc, paper, benchmark, source code), not a secondary summary.
+- **Research artifact logging**: every new WebSearch / WebFetch / HTTP lookup MUST append to `<thread>/artifacts/research/research-<actor>-<UTC-ts>.md` + `.jsonl` (same schema as planner). Cite those files under **Did**.
 - **Steel-man before critique**: state each option's strongest case in its own words BEFORE you raise objections. A turn that goes straight to objections is a `devils-advocate` turn, not deep research — re-scope.
 - **Refuse premature selection**: if you find yourself recommending one option, stop and reframe — your output is a rigor map, not a verdict. Use `Hand-off: revise: <discussant|planner> on <option selection>` instead.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).

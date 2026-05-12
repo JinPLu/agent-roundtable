@@ -9,6 +9,8 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "${HERE}/_common.sh"
+# CX1: role-aware session-resume helpers.
+source "${HERE}/lib/_resume.sh"
 
 _usage() {
   cat <<'EOF'
@@ -24,12 +26,18 @@ Options:
   --task TEXT       Per-turn instruction appended to the prompt.
   --task-file FILE  Per-turn instruction read from file (use for long inputs).
   --blind           Suppress prior reviewer verdict — required for parallel reviewers.
+                    Also forces fresh (resume HARD NO).
+  --no-resume       Force fresh run even if a valid session marker exists.
+  --force-resume    Resume even when TTL / git_sha checks would normally fail (debug).
+  --mode MODE       planner only: fresh (default) or refine (enables resume).
   --force           Bypass dispatch confirmation gate (CI/scripted use only).
   -h, --help        Print this help.
 
 Environment:
-  ROUNDTABLE_PROJECT_ROOT  Project root (default: caller's git toplevel).
-  ROUNDTABLE_TIMEOUT_S     Wallclock cap in seconds, 0 disables (default: 1500).
+  ROUNDTABLE_PROJECT_ROOT       Project root (default: caller's git toplevel).
+  ROUNDTABLE_TIMEOUT_S          Wallclock cap in seconds, 0 disables (default: 1500).
+  ROUNDTABLE_AUTOPILOT_CONTINUE Set =1 by /roundtable-goal autopilot to bypass
+                                resume TTL gate (git_sha still enforced).
 EOF
 }
 
@@ -51,6 +59,9 @@ while [[ $# -gt 0 ]]; do
     --task) task="$2"; shift 2;;
     --task-file) task_file="$2"; shift 2;;
     --blind) blind=1; shift;;
+    --no-resume) export ROUNDTABLE_NO_RESUME=1; shift;;
+    --force-resume) export ROUNDTABLE_FORCE_RESUME=1; shift;;
+    --mode) export ROUNDTABLE_PLANNER_MODE="$2"; shift 2;;
     --force) export ROUNDTABLE_FORCE=1; shift;;
     *) echo "unknown flag: $1 (try -h)" >&2; exit 2;;
   esac
@@ -152,6 +163,21 @@ _prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" 
 # --output-format json blob — extract by tailing for it post-run.
 _args=( -p --output-format stream-json --include-partial-messages --verbose --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
 
+# ── CX1: role-aware session resume (coarse, via --continue) ──────────────────
+# Marker existence + policy table decides whether we add --continue. Claude
+# headless `--continue` resumes the most recent session for the cwd; this is
+# coarser than codex's per-session_id resume but sufficient for this phase.
+# CL1 will refine to per-session_id `--resume <sid>` semantics.
+_session_marker_model="$(printf '%s' "${model:-default}" | tr '/:' '__')"
+_claude_session_marker="${thread_dir}/.claude_session.${role}.${_session_marker_model}.json"
+_claude_resume=0
+if _should_resume "$role" "$_claude_session_marker" "$blind" "${model:-}"; then
+  _claude_resume=1
+  _args+=( --continue )
+  _claude_resume_sid="$(jq -r '.session_id // empty' "$_claude_session_marker" 2>/dev/null || true)"
+  echo "INFO [claude_turn.sh]: resuming claude session (role=${role}, model=${_session_marker_model}, sid=${_claude_resume_sid:0:8}…)" >&2
+fi
+
 # Per-turn firewall: cap in-turn $/iteration spend so a runaway loop cannot
 # burn the whole roundtable budget (the roundtable parent budget is at
 # round granularity, not turn-internal). Defaults are env-overridable;
@@ -244,15 +270,24 @@ _start=$(date +%s)
 _max_retries="${ROUNDTABLE_RETRY_MAX:-3}"
 _attempt=1
 _ec=0
+# When resuming via --continue, pass the addendum-only "delta task" to avoid
+# re-spending tokens on a prompt the session has already absorbed. Fresh
+# runs keep using the full assembled prompt.
+if [[ "$_claude_resume" == "1" ]]; then
+  _prompt_text="$(cat "$_add")"
+  [[ -z "$_prompt_text" ]] && _prompt_text="Continue per the durable goal — produce the next 5-part turn body."
+else
+  _prompt_text="$(cat "$_prompt")"
+fi
 while :; do
   set +e
   (
     if command -v timeout >/dev/null 2>&1 && [[ "$timeout_s" -gt 0 ]]; then
       cd "$_cwd" && timeout --signal=TERM --kill-after=10 "${timeout_s}" \
-        claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+        claude "${_args[@]}" "$_prompt_text" "${_tools[@]}" \
         < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/cli_stderr.log"
     else
-      cd "$_cwd" && claude "${_args[@]}" "$(cat "$_prompt")" "${_tools[@]}" \
+      cd "$_cwd" && claude "${_args[@]}" "$_prompt_text" "${_tools[@]}" \
         < /dev/null > "${hist}/stream.jsonl" 2>"${hist}/cli_stderr.log"
     fi
   ) &
@@ -323,6 +358,36 @@ if [[ -s "${hist}/last.json" ]]; then
   [[ -s "${hist}/last.md" ]] || cp "${hist}/last.json" "${hist}/last.md"
 fi
 
+# CX1: persist session marker for eligible roles (after last.json exists).
+if [[ "$_ec" -eq 0 ]] && _marker_persist_eligible "$role" "$blind"; then
+  _nsid=""
+  [[ -s "${hist}/last.json" ]] && _nsid="$(python3 "${SKILL_DIR}/scripts/lib/extract_claude_session_id.py" "${hist}/last.json" 2>/dev/null || true)"
+  if [[ -z "$_nsid" && -s "${hist}/stream.jsonl" ]]; then
+    _nsid="$(python3 - "${hist}/stream.jsonl" <<'PY'
+import json, sys
+sid = ""
+for raw in open(sys.argv[1], "r", encoding="utf-8", errors="replace"):
+    line = raw.strip()
+    if not line.startswith("{"):
+        continue
+    try:
+        evt = json.loads(line)
+    except Exception:
+        continue
+    cand = evt.get("session_id")
+    if isinstance(cand, str) and cand:
+        sid = cand
+        break
+print(sid)
+PY
+)"
+  fi
+  if [[ -n "$_nsid" ]]; then
+    _write_session_marker "$_claude_session_marker" "$_nsid" "${model:-}" || \
+      echo "WARN [claude_turn.sh]: failed to write session marker ${_claude_session_marker}" >&2
+  fi
+fi
+
 # Planner + plan mode cannot write artifacts/ — capture extracted stdout into thread artifacts for operators.
 _plan_art=""
 if [[ "$role" == "planner" && "$perm" == "plan" && -s "${hist}/last.md" ]]; then
@@ -351,7 +416,13 @@ patch_blind_meta "${hist}/meta.json" "$blind"
 
 # Append project-wide usage record (best-effort; never alter exit status).
 # See scripts/lib/log_turn_usage.py and docs/research/COST_ESTIMATION-2026-05-10.md §6.4.
+_real_usd="null"
+python3 "${SKILL_DIR}/scripts/lib/extract_claude_usage.py" "${hist}/last.json" --write "${hist}/usage.json" >/dev/null 2>&1 || true
+if [[ -f "${hist}/usage.json" ]]; then
+  _real_usd="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['real_usd'] if d.get('usage_found') else 'null')" "${hist}/usage.json" 2>/dev/null || echo null)"
+fi
+
 finalize_turn "$thread_dir" "$hist" "claude" "$role" "$_ec" "$_turn_n" "$_dur" \
-  "$slug" "${model:-default}" "$effort" "${hist}/last.json"
+  "$slug" "${model:-default}" "$effort" "${hist}/last.json" "null" "$_real_usd"
 exit $_ec
 }

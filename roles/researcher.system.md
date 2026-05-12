@@ -23,6 +23,7 @@ The artifact under `artifacts/` should follow the structure: **Question being re
 
 ## Rules
 - **Independent verification**: see [_independence_rule.md](_independence_rule.md). For research turns this means EVERY claim must cite a source you actually opened — no paraphrased priors. If you cannot cite a source, state the claim as a hypothesis.
+- **Research artifact logging**: any WebSearch / WebFetch / HTTP lookup MUST also write BOTH `<thread>/artifacts/research/research-<actor>-<UTC-ts>.md` and `.jsonl` (same schema as planner role prompt). List those paths under **Did**.
 - **Context hygiene**: if research surfaces new architectural rules, conventions, or persistent project facts, update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.
 - Present at least 2 options per decision point. A single-option write-up is not research — flag it as `escalate-to-user` instead.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).

@@ -76,6 +76,23 @@ Everything else: the loop self-corrects via cross-vendor turns and writes eviden
 
 Show the [Dispatch Confirmation](../../SKILL.md#dispatch-confirmation) **once**. Set **Budget** explicitly (default: 3 rounds, no clock cap) — this is the **autonomy envelope**; the loop will not ping again until budget is exhausted. Subsequent in-loop turns do **not** re-confirm, even when the loop substitutes a fallback route or auto-dispatches a corrective turn.
 
+#### Phase 0b (optional — Cursor autopilot / H5)
+
+For unattended continuation via Cursor `stop` hook + `followup_message`:
+
+1. Immediately after GO: `touch <thread-dir>/.autopilot` (marker — hooks only fire while this exists).
+2. During autopilot-driven rounds, export **`ROUNDTABLE_AUTOPILOT_CONTINUE=1`** before executor dispatches so session resume skips the 24h TTL (git HEAD / model mismatch gates still apply via `scripts/lib/_resume.sh`).
+3. Emergency brake: `touch <thread-dir>/.autopilot.abort` — removes autopilot on next hook evaluation.
+4. On convergence or budget stop: delete `.autopilot` (the hook may also remove it).
+
+##### Autopilot parent prompt handling
+
+When the chat receives a user message starting with:
+
+`/roundtable-goal autopilot continue: thread=<slug> ...`
+
+Treat Dispatch Confirmation Phase 0 as **already locked** — parse `next_action_hint` (and optional `prefer_resume=1`) and jump to the appropriate phase (typically Phase 2 execute). **`prefer_resume=1`** signals that executor turns should hit Codex `exec resume` / Claude `--continue` session continuity — do **not** force `--no-resume` unless debugging.
+
 ### Phase 1: plan
 
 Delegate to **`skills/roundtable-plan/SKILL.md`** (cross-vendor fan-out → `artifacts/PLAN.md`). Goal-loop constraint: if `GOAL.md` acceptance criteria are still at template defaults, sharpen them and re-invoke plan before proceeding to Phase 2.

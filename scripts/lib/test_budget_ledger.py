@@ -32,3 +32,14 @@ def test_budget_file_read(tmp_path):
     budget_file.write_text("0.05\n")
     ok, total, msg = check_budget(pathlib.Path(tmp_path))
     assert ok is False  # 0.1 > 0.05
+
+
+def test_prefers_real_usd_over_est(tmp_path):
+    ledger = pathlib.Path(tmp_path) / ".budget_ledger.jsonl"
+    ledger.write_text(
+        '{"ts":"t","role":"r","model":"m","est_usd":99.0,"real_usd":0.05}\n'
+    )
+    ok, total, msg = check_budget(pathlib.Path(tmp_path), max_usd=1.0)
+    assert ok is True
+    assert abs(total - 0.05) < 1e-6
+    assert "real" in msg
