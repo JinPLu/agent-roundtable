@@ -163,19 +163,19 @@ _prompt="$(ROUNDTABLE_SKIP_ROLE_SYS=1 ROUNDTABLE_SKIP_LATEST_VERDICT="${blind}" 
 # --output-format json blob — extract by tailing for it post-run.
 _args=( -p --output-format stream-json --include-partial-messages --verbose --permission-mode "$perm" --effort "$effort" --add-dir "$thread_dir" )
 
-# ── CX1: role-aware session resume (coarse, via --continue) ──────────────────
-# Marker existence + policy table decides whether we add --continue. Claude
-# headless `--continue` resumes the most recent session for the cwd; this is
-# coarser than codex's per-session_id resume but sufficient for this phase.
-# CL1 will refine to per-session_id `--resume <sid>` semantics.
+# ── CX1: role-aware session resume (per session_id) ─────────────────────────
+# Marker existence + policy table decides whether we add `--resume <sid>`.
+# The marker must yield a session_id; otherwise we stay fresh.
 _session_marker_model="$(printf '%s' "${model:-default}" | tr '/:' '__')"
 _claude_session_marker="${thread_dir}/.claude_session.${role}.${_session_marker_model}.json"
 _claude_resume=0
 if _should_resume "$role" "$_claude_session_marker" "$blind" "${model:-}"; then
-  _claude_resume=1
-  _args+=( --continue )
   _claude_resume_sid="$(jq -r '.session_id // empty' "$_claude_session_marker" 2>/dev/null || true)"
-  echo "INFO [claude_turn.sh]: resuming claude session (role=${role}, model=${_session_marker_model}, sid=${_claude_resume_sid:0:8}…)" >&2
+  if [[ -n "$_claude_resume_sid" ]]; then
+    _claude_resume=1
+    _args+=( --resume "$_claude_resume_sid" )
+    echo "INFO [claude_turn.sh]: resuming claude session (role=${role}, model=${_session_marker_model}, sid=${_claude_resume_sid:0:8}…)" >&2
+  fi
 fi
 
 # Per-turn firewall: cap in-turn $/iteration spend so a runaway loop cannot
@@ -270,7 +270,7 @@ _start=$(date +%s)
 _max_retries="${ROUNDTABLE_RETRY_MAX:-3}"
 _attempt=1
 _ec=0
-# When resuming via --continue, pass the addendum-only "delta task" to avoid
+# When resuming, pass the addendum-only "delta task" to avoid
 # re-spending tokens on a prompt the session has already absorbed. Fresh
 # runs keep using the full assembled prompt.
 if [[ "$_claude_resume" == "1" ]]; then

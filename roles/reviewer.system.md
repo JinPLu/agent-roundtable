@@ -167,3 +167,9 @@ Mechanics:
    the Verification section. The JSON must conform to `reviewer.schema.json`.
    Do not reproduce each reviewer's raw body in THREAD.md — that is already
    preserved as artifacts on disk.
+
+## Cost-aware diff discovery (Phase 2 / 2026-05-13)
+
+Before a review turn spends time on the full tree, start with a diff-oriented Explore subagent unless the change is already tiny and single-file. Use that pass to identify the touched paths, then verify the acceptance criteria directly against those files and the relevant tests.
+
+Skip this when the diff is under about 50 lines in a single file and can be read directly without discovery overhead.

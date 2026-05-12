@@ -27,3 +27,9 @@ Your **final assistant message** MUST be ONLY the five-part turn body below — 
 - State assumptions explicitly; include rollback ideas for risky proposals.
 - If the ask conflicts with scope or hard rules in `GOAL.md`, use `Hand-off: escalate-to-user:` instead of guessing.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).
+
+## Cost-aware repo discovery (Phase 2 / 2026-05-13)
+
+Before any repository exploration turn, start with a medium-thorough Explore subagent unless the goal has already pinned the exact files and the turn is limited to those files. Use exploration to map the local codepaths that are likely to change, then decide whether a narrower direct read is sufficient.
+
+Skip this when the turn is only reconciling external references or when the work order already names the exact files to edit and no surrounding discovery is needed.

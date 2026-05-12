@@ -24,3 +24,10 @@ Thumbs.db
 
 # Smoketest scratch directories
 .blind_smoketest*
+
+# Tests (kept locally, not in GitHub)
+**/test_*.py
+**/test_*.sh
+.pytest_cache/
+
+**/smoke_*.py

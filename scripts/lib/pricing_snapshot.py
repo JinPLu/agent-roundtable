@@ -7,11 +7,12 @@ The snapshot lives at `scripts/lib/pricing_snapshot.json`; refresh via
 Pricing convention
 ------------------
 The snapshot stores LiteLLM-native PER-TOKEN values
-(`input_cost_per_token`, `output_cost_per_token`, `cache_read_input_token_cost`).
-This loader exposes them as PER-1M for symmetry with `models.json`'s
-`per_1m_input` / `per_1m_output` rates that `estimate_cost.py` already speaks.
-The conversion (×1e6) happens in `get_model_pricing` only — internal callers
-that want raw rates can inspect `load_snapshot()['_models'][id]` directly.
+(`input_cost_per_token`, `output_cost_per_token`,
+`cache_creation_input_token_cost`, `cache_read_input_token_cost`). This loader
+exposes them as PER-1M for symmetry with `models.json`'s `per_1m_input` /
+`per_1m_output` rates that `estimate_cost.py` already speaks. The conversion
+(×1e6) happens in `get_model_pricing` only — internal callers that want raw
+rates can inspect `load_snapshot()['_models'][id]` directly.
 
 Lookup
 ------
@@ -94,6 +95,7 @@ def get_model_pricing(
       {
         "per_1m_input":         <float>,
         "per_1m_output":        <float>,
+        "per_1m_cache_creation": <float | None>,   # only if upstream had it
         "per_1m_cached_input":  <float | None>,    # only if upstream had it
         "max_input_tokens":     <int | None>,
         "max_output_tokens":    <int | None>,
@@ -110,10 +112,16 @@ def get_model_pricing(
     out_pt = entry.get("output_cost_per_token")
     if in_pt is None or out_pt is None:
         return None
+    cache_creation_pt = entry.get("cache_creation_input_token_cost")
     cached_pt = entry.get("cache_read_input_token_cost")
     return {
         "per_1m_input": float(in_pt) * 1_000_000.0,
         "per_1m_output": float(out_pt) * 1_000_000.0,
+        "per_1m_cache_creation": (
+            float(cache_creation_pt) * 1_000_000.0
+            if cache_creation_pt is not None
+            else None
+        ),
         "per_1m_cached_input": (
             float(cached_pt) * 1_000_000.0 if cached_pt is not None else None
         ),

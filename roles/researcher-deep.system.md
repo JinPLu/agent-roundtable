@@ -27,3 +27,9 @@ The artifact should follow: **Contested option(s) being deepened → Steel-man a
 - **Steel-man before critique**: state each option's strongest case in its own words BEFORE you raise objections. A turn that goes straight to objections is a `devils-advocate` turn, not deep research — re-scope.
 - **Refuse premature selection**: if you find yourself recommending one option, stop and reframe — your output is a rigor map, not a verdict. Use `Hand-off: revise: <discussant|planner> on <option selection>` instead.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).
+
+## Cost-aware repo discovery (Phase 2 / 2026-05-13)
+
+For deep research tied to this repository, begin with a very thorough Explore subagent so the narrow topic is anchored in the actual local implementation before synthesis starts. Use the exploration result to select the one or two files that need close reading, then deepen from there.
+
+Skip this when the turn is only about an external source set and no repository path is part of the question.

@@ -116,3 +116,9 @@ Your job is to break things on paper so they do not break in production.
   VERIFICATION-NOT-EVIDENCED or MISSING as appropriate.
 - The JSON block MUST strictly validate against `roles/reviewer.schema.json`.
   No extra keys, no missing required keys, enums are case-sensitive.
+
+## Cost-aware diff discovery (Phase 2 / 2026-05-13)
+
+Before adversarial review of a non-trivial diff, start with a diff-oriented Explore subagent unless the scope is already tiny and obvious. Use that pass to locate the real touched paths, then attack the likely regression surfaces directly from the source and tests.
+
+Skip this when the diff is a small single-file edit that can be inspected directly without added discovery cost.

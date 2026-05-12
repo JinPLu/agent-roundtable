@@ -1,6 +1,6 @@
 {
-  "_fetched": "2026-05-10",
-  "_litellm_commit_or_etag": "\"fb46ac177e3a79fb6d8027ebf62cfc817defdb24d605cd8584e4234bf9ee3caa\"",
+  "_fetched": "2026-05-13",
+  "_litellm_commit_or_etag": "\"2154a657a1aaff612c8fc483c07e3f68ebb73b55798d668d50cab9200b27c970\"",
   "_models": {
     "claude-4.6-opus-high-thinking": {
       "_no_litellm_source": true,
@@ -67,8 +67,17 @@
       "supports_tool_choice": true
     },
     "claude-opus-4-7-thinking-high": {
-      "_no_litellm_source": true,
-      "_note": "cursor-claude-4.7-opus thinking variant \u2014 Cursor doesn't publish a LiteLLM id."
+      "_litellm_id": "claude-opus-4-7",
+      "cache_creation_input_token_cost": 6.25e-06,
+      "cache_read_input_token_cost": 5e-07,
+      "input_cost_per_token": 5e-06,
+      "litellm_provider": "anthropic",
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "mode": "chat",
+      "output_cost_per_token": 2.5e-05,
+      "supports_reasoning": true,
+      "_note": "cursor-claude-4.7-opus thinking variant \u2014 Cursor doesn't publish a LiteLLM id, using base opus-4-7 pricing."
     },
     "claude-sonnet-4-5": {
       "_litellm_id": "claude-sonnet-4-5",

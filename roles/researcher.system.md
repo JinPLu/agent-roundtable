@@ -27,3 +27,9 @@ The artifact under `artifacts/` should follow the structure: **Question being re
 - **Context hygiene**: if research surfaces new architectural rules, conventions, or persistent project facts, update `AGENTS.md` (and `CLAUDE.md` if Claude-specific) and relevant `.planning/` files before handing off.
 - Present at least 2 options per decision point. A single-option write-up is not research — flag it as `escalate-to-user` instead.
 - All on-disk artifacts must be in **English** (Chinese source quotes are fine with a gloss).
+
+## Cost-aware repo discovery (Phase 2 / 2026-05-13)
+
+Start each repo-oriented research turn with a medium-thorough Explore subagent so the first pass covers the likely local files without over-reading the tree. Use that discovery to bound the external research questions, then branch into focused source reads only where the repo context actually matters.
+
+Skip this when the task is purely external and the repository does not affect the comparison being built.

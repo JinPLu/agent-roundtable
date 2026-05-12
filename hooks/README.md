@@ -8,8 +8,9 @@ text in `SKILL.md` plus best-effort env checks inside `codex_turn.sh` /
 the docs (or shelled out via a wrapper) is still caught.
 
 See the plan at `/root/.cursor/plans/agent-roundtable_hook_5_件套_*.plan.md`
-sections **三** (hook layer) and **四** (codex deep integration) for full
-context.
+sections **三** (hook layer) and **四** (codex deep integration), as well as
+`docs/specs/2026-05-13-phase2-block2-claude-parity-design.md` (Claude parity)
+for full context.
 
 ## Hook matrix
 
