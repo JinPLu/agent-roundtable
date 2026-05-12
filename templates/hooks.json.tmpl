@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "<SKILL_DIR>/hooks/roundtable-dispatch-gate.sh",
+        "matcher": "(codex|claude)_turn\\.sh",
+        "failClosed": false,
+        "_roundtable_id": "roundtable.h1.dispatch-gate"
+      },
+      {
+        "command": "<SKILL_DIR>/hooks/roundtable-diversity-block.sh",
+        "matcher": "reviewer-aggregator",
+        "failClosed": false,
+        "_roundtable_id": "roundtable.h2.diversity"
+      },
+      {
+        "command": "<SKILL_DIR>/hooks/roundtable-budget-gate.sh",
+        "matcher": "(codex|claude)_turn\\.sh",
+        "failClosed": false,
+        "_roundtable_id": "roundtable.h4.budget"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "<SKILL_DIR>/hooks/roundtable-oracle-post.sh",
+        "matcher": "Shell",
+        "failClosed": false,
+        "_roundtable_id": "roundtable.h3.oracle"
+      }
+    ],
+    "stop": [
+      {
+        "command": "<SKILL_DIR>/hooks/roundtable-autopilot-continue.sh",
+        "failClosed": false,
+        "loop_limit": 15,
+        "_roundtable_id": "roundtable.h5.autopilot"
+      }
+    ]
+  }
+}
