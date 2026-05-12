@@ -137,21 +137,31 @@ AskQuestion(
 )
 ```
 
-If the user selects `copy-template`, install from the skill template (**always substitute `<SKILL_DIR>`** so bundled Cursor hooks resolve):
+If the user selects `copy-template`, install from the skill template
+**substituting `<SKILL_DIR>` placeholders with the absolute skill path**
+so the bundled Cursor hooks (H1–H5) can resolve, and back up any
+pre-existing destination first so the user can recover their config:
 
 ```bash
 mkdir -p "$ROUNDTABLE_PROJECT_ROOT/.claude"
 SKILL_ABS="$(cd "$SKILL" && pwd)"
 DST="$ROUNDTABLE_PROJECT_ROOT/.claude/settings.json"
-[[ -f "$DST" ]] && cp "$DST" "${DST}.roundtable-bak"
-python3 <<PY
-from pathlib import Path
-skill_abs = Path("$SKILL_ABS")
-dst = Path("$DST")
-text = (skill_abs / "templates/.claude/settings.json").read_text(encoding="utf-8").replace("<SKILL_DIR>", str(skill_abs))
-dst.write_text(text, encoding="utf-8")
-print(f"wrote {dst} (backup: {dst}.roundtable-bak if existed)")
-PY
+
+# 1. Back up any pre-existing destination before clobbering.
+[[ -f "$DST" ]] && cp -a "$DST" "${DST}.roundtable-bak"
+
+# 2. sed-replace <SKILL_DIR> with the absolute path. Escape `/` and `&`
+#    in the path so sed's replacement parses correctly even on macOS BSD sed.
+ESC_SKILL="$(printf '%s' "$SKILL_ABS" | sed -e 's/[\/&]/\\&/g')"
+sed "s/<SKILL_DIR>/$ESC_SKILL/g" \
+    "$SKILL_ABS/templates/.claude/settings.json" > "$DST"
+
+# 3. Sanity check: file must still be valid JSON after the substitution.
+python3 -c "import json,sys; json.load(open('$DST'))" \
+  || { echo "ERROR: <SKILL_DIR> substitution produced invalid JSON in $DST — restoring backup" >&2; \
+       [[ -f "${DST}.roundtable-bak" ]] && cp -a "${DST}.roundtable-bak" "$DST"; exit 1; }
+
+echo "wrote $DST (backup: ${DST}.roundtable-bak if pre-existing)"
 ```
 
 The template denies destructive git operations (`git push`, `git reset --hard`, `git rebase`, `git filter-branch`, `git update-ref`) and reads of common secrets (`.env*`, `~/.aws/**`, `~/.ssh/**`, `credentials*`, `*secret*`, `*.pem`). With this file present, `claude_turn.sh` skips its inline `--disallowedTools` fallback in favour of project-level settings — same coverage, source-controllable, user-overridable.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "_comment": "Project-level allow + deny + hooks for headless claude -p. Required at <project_cwd>/.claude/settings.json (Anthropic: --add-dir paths do NOT contribute settings). Executor role uses --permission-mode dontAsk which lets ONLY allow-listed tools run; reviewer-likes use plan mode. roundtable-setup copies this file into the user's project root. Outside roundtable dispatch the hooks no-op silently.",
+  "_comment": "Project-level allow + deny + hooks for headless claude -p and Cursor third-party-hooks. Required at <project_cwd>/.claude/settings.json (Anthropic: --add-dir paths do NOT contribute settings; Cursor: per https://cursor.com/docs/reference/third-party-hooks Claude Code hook names auto-map to Cursor events). Executor role uses --permission-mode dontAsk which lets ONLY allow-listed tools run; reviewer-likes use plan mode. roundtable-setup copies this file into the user's project root, replacing <SKILL_DIR> with the absolute install path. Outside roundtable dispatch the hooks no-op silently.",
   "permissions": {
     "allow": [
       "Bash(chmod:*)",
@@ -69,6 +69,28 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<SKILL_DIR>/hooks/roundtable-dispatch-gate.sh",
+            "_roundtable_id": "roundtable.h1.dispatch-gate"
+          },
+          {
+            "type": "command",
+            "command": "<SKILL_DIR>/hooks/roundtable-diversity-block.sh",
+            "_roundtable_id": "roundtable.h2.diversity-block"
+          },
+          {
+            "type": "command",
+            "command": "<SKILL_DIR>/hooks/roundtable-budget-gate.sh",
+            "_roundtable_id": "roundtable.h4.budget-gate"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
@@ -76,6 +98,16 @@
           {
             "type": "command",
             "command": "if [ -n \"$ROUNDTABLE_HIST_DIR\" ]; then mkdir -p \"$ROUNDTABLE_HIST_DIR\" && { cat; printf '\\n'; } >> \"$ROUNDTABLE_HIST_DIR/edits.log\" 2>/dev/null || true; else cat >/dev/null; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<SKILL_DIR>/hooks/roundtable-oracle-post.sh",
+            "_roundtable_id": "roundtable.h3.oracle-post"
           }
         ]
       }
@@ -86,44 +118,13 @@
           {
             "type": "command",
             "command": "if [ -n \"$ROUNDTABLE_HIST_DIR\" ]; then mkdir -p \"$ROUNDTABLE_HIST_DIR\" && cat > \"$ROUNDTABLE_HIST_DIR/stop.json\" 2>/dev/null || true; else cat >/dev/null; fi"
+          },
+          {
+            "type": "command",
+            "command": "<SKILL_DIR>/hooks/roundtable-autopilot-continue.sh",
+            "_roundtable_id": "roundtable.h5.autopilot-continue"
           }
         ]
-      }
-    ],
-    "beforeShellExecution": [
-      {
-        "command": "<SKILL_DIR>/hooks/roundtable-dispatch-gate.sh",
-        "matcher": "(codex|claude)_turn\\.sh",
-        "failClosed": false,
-        "_roundtable_id": "roundtable.h1.dispatch-gate"
-      },
-      {
-        "command": "<SKILL_DIR>/hooks/roundtable-diversity-block.sh",
-        "matcher": "reviewer-aggregator",
-        "failClosed": false,
-        "_roundtable_id": "roundtable.h2.diversity"
-      },
-      {
-        "command": "<SKILL_DIR>/hooks/roundtable-budget-gate.sh",
-        "matcher": "(codex|claude)_turn\\.sh",
-        "failClosed": false,
-        "_roundtable_id": "roundtable.h4.budget"
-      }
-    ],
-    "postToolUse": [
-      {
-        "command": "<SKILL_DIR>/hooks/roundtable-oracle-post.sh",
-        "matcher": "Shell",
-        "failClosed": false,
-        "_roundtable_id": "roundtable.h3.oracle"
-      }
-    ],
-    "stop": [
-      {
-        "command": "<SKILL_DIR>/hooks/roundtable-autopilot-continue.sh",
-        "failClosed": false,
-        "loop_limit": 15,
-        "_roundtable_id": "roundtable.h5.autopilot"
       }
     ]
   }
